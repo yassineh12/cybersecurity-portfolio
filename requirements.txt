@@ -1,0 +1,6 @@
+requests>=2.31
+beautifulsoup4>=4.12
+pytest>=8.0
+# project 2, lesson 3 onwards:
+pandas>=2.0
+scikit-learn>=1.3
