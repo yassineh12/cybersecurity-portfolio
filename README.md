@@ -8,6 +8,8 @@ Three projects that build on each other. Together they cover the defensive, anal
 | 2 | [Phishing site detector](02-phishing-detector/) | Lesson 1 of 4 | Threat intel data, feature engineering, ML classification |
 | 3 | [Passive vulnerability scanner](03-vuln-scanner/) | Planned | Recon, fingerprinting, CVE matching, safe XSS checks |
 
+What comes next: see [ROADMAP.md](ROADMAP.md).
+
 Project 1's `crawler.py` is shared: project 2 uses it to collect legitimate URLs, and project 3 will use it to map a target.
 
 ## Setup
