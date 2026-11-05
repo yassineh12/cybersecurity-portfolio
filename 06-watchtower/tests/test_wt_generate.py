@@ -109,3 +109,51 @@ def test_cli_writes_files(tmp_path):
                     "--labels", str(lab), "--seed", "1", "--hours", "1"], check=True)
     assert lab.read_text().startswith("client_ip,label,scenario")
     assert out.read_text().splitlines() == generate(1, 1)[0]
+
+
+HARD = ("stealth_enum", "wp_bruteforce", "bruteforce_slow_success", "sqli_evasive", "traversal_encoded",
+        "lookalike_searcher", "admin_user", "downloader", "office_nat")
+
+
+def test_hard_profile_scenarios_labelled_and_present():
+    lines, labels = generate(7, 6, profile="hard")
+    by_s = {r["scenario"]: r for r in labels}
+    seen = {ln.split()[0] for ln in lines}
+    for s in HARD:
+        assert s in by_s and by_s[s]["client_ip"] in seen
+    assert by_s["stealth_enum"]["label"] == "malicious"
+    assert by_s["office_nat"]["label"] == "benign"
+    assert len(generate(7, 6)[1]) < len(labels)
+
+
+def test_hard_profile_valid_deterministic_rfc5737():
+    a = generate(7, 6, profile="hard")
+    assert a == generate(7, 6, profile="hard")
+    for ln in a[0]:
+        assert COMBINED.match(ln), ln
+        assert any(ipaddress.ip_address(ln.split()[0]) in n for n in NETS)
+    times = [parse_ts(COMBINED.match(ln).group(2)) for ln in a[0]]
+    assert times == sorted(times)
+
+
+def test_hard_scenario_shapes():
+    lines, labels = generate(7, 6, profile="hard")
+    ip = {r["scenario"]: r["client_ip"] for r in labels}
+    mine = lambda s: [ln for ln in lines if ln.startswith(ip[s] + " ")]
+    assert len(mine("stealth_enum")) == 150
+    assert sum("POST /wp-login.php" in x for x in mine("wp_bruteforce")) == 60
+    assert sum(" 403 " in x and "/admin/products/save" in x for x in mine("admin_user")) == 12
+    assert any("%25252e%25252e%25252f" in x for x in mine("traversal_encoded"))
+
+
+def test_many_hours_no_ip_overflow_or_collision():
+    for profile in ("easy", "hard"):
+        lines, labels = generate(7, 100, profile=profile)
+        ips = [r["client_ip"] for r in labels]
+        assert len(ips) == len(set(ips))
+        for ip in {ln.split()[0] for ln in lines} | set(ips):
+            addr = ipaddress.ip_address(ip)
+            assert any(addr in n for n in NETS), ip
+        mal = {r["client_ip"] for r in labels if r["label"] == "malicious"}
+        benign_scen = {r["client_ip"] for r in labels if r["label"] == "benign"}
+        assert not mal & benign_scen

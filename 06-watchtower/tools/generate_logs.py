@@ -131,10 +131,12 @@ def _benign_user(log, ip, ua, sessions):
 def _benign(log, hours):
     rng = log.rng
     users = max(10, int(hours * 5))
+    pool = [f"192.0.2.{n}" for n in range(10, 250)] + [f"198.51.100.{n}" for n in range(30, 250)]
     for i in range(users):
-        ip = f"192.0.2.{10 + i}" if i < 200 else f"198.51.100.{i - 100}"
+        ip = pool[i % len(pool)]        # cycle: long runs reuse addresses, never leave RFC 5737
         _benign_user(log, ip, rng.choice(BROWSER_UAS), rng.randint(1, 3))
-        log.label(ip, "benign", "benign_browsing")
+        if i < len(pool):
+            log.label(ip, "benign", "benign_browsing")
     # noisy-but-benign: normal browsing plus ~8 dead links over ~10 minutes
     ip, ua = "192.0.2.250", BROWSER_UAS[0]
     _benign_user(log, ip, ua, 2)
@@ -225,8 +227,119 @@ def _traversal(log):
     log.label(ip, "malicious", "traversal")
 
 
-def generate(seed: int, hours: float, start: datetime | None = None) -> tuple[list[str], list[dict]]:
-    """Return (log lines sorted by time, label rows). Same seed -> same output."""
+BROWSER = BROWSER_UAS[0]
+
+
+def _stealth_enum(log):
+    rng, ip = log.rng, "203.0.113.21"
+    ts = log.at(0.05, 0.4, room=1000)
+    for n in range(150):
+        word = WORDLIST[n % len(WORDLIST)]
+        log.add(ts, ip, "GET", f"/{word}{n // len(WORDLIST) or ''}/", rng.choice([404, 404, 404, 403]), ua=BROWSER)
+        ts += timedelta(seconds=rng.randint(4, 6))
+    log.label(ip, "malicious", "stealth_enum")
+
+
+def _wp_bruteforce(log):
+    rng, ip = log.rng, "203.0.113.22"
+    ts = log.at(0.1, 0.7, room=320)
+    for _ in range(60):
+        log.add(ts, ip, "POST", "/wp-login.php", 200, rng.randint(2500, 2700), ref=SITE + "/wp-login.php", ua=BROWSER)
+        ts += timedelta(seconds=rng.randint(3, 5))
+    log.label(ip, "malicious", "wp_bruteforce")
+
+
+def _slow_bruteforce(log):
+    rng, ip = log.rng, "203.0.113.23"
+    ts = log.at(0.05, 0.4, room=1400)
+    for _ in range(40):
+        log.add(ts, ip, "POST", "/login", 401, 512, ref=SITE + "/login", ua=BROWSER)
+        ts += timedelta(seconds=rng.randint(28, 32))
+    log.add(ts, ip, "POST", "/login", 302, 0, ref=SITE + "/login", ua=BROWSER)
+    log.add(ts + timedelta(seconds=1), ip, "GET", "/account", 200, ref=SITE + "/login", ua=BROWSER)
+    log.label(ip, "malicious", "bruteforce_slow_success")
+
+
+def _sqli_evasive(log):
+    rng, ip = log.rng, "203.0.113.24"
+    ts = log.at(0.1, 0.8, room=200)
+    for q in ("/products?id=1%20AND%201=CONVERT(int,@@version)", "/products?sort=name ORDER BY 10--",
+              "/products?id=1 AND 1=2--", "/products?id=1%20AND%201=1", "/products?id=1%27%20AND%20%271%27=%272"):
+        log.add(ts, ip, "GET", q.replace(" ", "+" if rng.random() < 0.5 else "%20"), rng.choice([200, 500]), ref=SITE + "/", ua=BROWSER)
+        ts += timedelta(seconds=rng.randint(8, 40))
+    log.label(ip, "malicious", "sqli_evasive")
+
+
+def _traversal_encoded(log):
+    rng, ip = log.rng, "203.0.113.25"
+    ts = log.at(0.1, 0.8, room=200)
+    for depth in (3, 4, 5, 6):
+        enc = "%25252e%25252e%25252f" * depth
+        log.add(ts, ip, "GET", f"/download?file={enc}etc/passwd", rng.choice([400, 403, 404]), ua=BROWSER)
+        ts += timedelta(seconds=rng.randint(5, 30))
+    log.label(ip, "malicious", "traversal_encoded")
+
+
+def _lookalike(log):
+    rng, ip = log.rng, "192.0.2.251"
+    ua = BROWSER_UAS[2]
+    queries = ["baby+sleep+(8+hours)+guide", "%22red+scarf%22+--+wool", "dog+%26%26+cat+toys",
+               "win.ini+file+help", "select+a+plan"]
+    ts = log.at(0.1, 0.8, room=400)
+    for q in queries * 2:
+        log.add(ts, ip, "GET", f"/search?q={q}", 200, ref=SITE + "/", ua=ua)
+        ts += timedelta(seconds=rng.randint(20, 120))
+    log.label(ip, "benign", "lookalike_searcher")
+
+
+def _admin_user(log):
+    rng, ip = log.rng, "192.0.2.252"
+    ua = BROWSER_UAS[1]
+    ts = log.at(0.1, 0.7, room=400)
+    log.add(ts, ip, "GET", "/admin/products/", 200, ua=ua)
+    for n in (1, 2, 3):
+        ts += timedelta(seconds=rng.randint(10, 40))
+        log.add(ts, ip, "GET", f"/admin/products/{n}/edit", 200, ref=SITE + "/admin/products/", ua=ua)
+    for _ in range(12):
+        ts += timedelta(seconds=rng.randint(2, 6))
+        log.add(ts, ip, "POST", "/admin/products/save", 403, ref=SITE + "/admin/products/3/edit", ua=ua)
+    ts += timedelta(seconds=5)
+    log.add(ts, ip, "POST", "/admin/products/save", 302, 0, ref=SITE + "/admin/products/3/edit", ua=ua)
+    log.add(ts + timedelta(seconds=1), ip, "GET", "/admin/products/", 200, ua=ua)
+    log.label(ip, "benign", "admin_user")
+
+
+def _downloader(log):
+    rng, ip = log.rng, "192.0.2.253"
+    ua = BROWSER_UAS[3]
+    ts = log.at(0.1, 0.8, room=300)
+    for path in ("/downloads/db.zip", "/downloads/manual.pdf", "/downloads/manual.pdf"):
+        log.add(ts, ip, "GET", path, 200, rng.randint(200000, 900000), ref=SITE + "/products/3", ua=ua)
+        ts += timedelta(seconds=rng.randint(15, 90))
+    log.label(ip, "benign", "downloader")
+
+
+def _office_nat(log):
+    rng, ip = log.rng, "192.0.2.254"
+    uas = [f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{120 + i}.0.0.0 Safari/537.36"
+           for i in range(15)]
+    for ua in uas:
+        _benign_user(log, ip, ua, 1)
+    log.label(ip, "benign", "office_nat")
+
+
+HARD_SCENARIOS = (_stealth_enum, _wp_bruteforce, _slow_bruteforce, _sqli_evasive, _traversal_encoded,
+                  _lookalike, _admin_user, _downloader, _office_nat)
+
+
+def generate(seed: int, hours: float, start: datetime | None = None,
+             profile: str = "easy") -> tuple[list[str], list[dict]]:
+    """Return (log lines sorted by time, label rows). Same seed -> same output.
+
+    profile "hard" adds evasive attackers and benign look-alikes (a trap set).
+    """
+    if profile not in ("easy", "hard"):
+        raise ValueError(f"unknown profile {profile!r}")
     rng = random.Random(seed)
     start = start or DEFAULT_START
     if start.tzinfo is None:
@@ -237,6 +350,9 @@ def generate(seed: int, hours: float, start: datetime | None = None) -> tuple[li
     _benign(log, hours)
     for scenario in (_scanner, _enumeration, _bruteforce, _sqli, _log4shell, _traversal):
         scenario(log)
+    if profile == "hard":
+        for scenario in HARD_SCENARIOS:
+            scenario(log)
     log.rows.sort(key=lambda r: r[0])   # stable: ties keep generation order
     return [text for _, text in log.rows], log.labels
 
@@ -247,10 +363,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--labels", required=True)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--hours", type=float, default=6.0)
+    ap.add_argument("--profile", choices=("easy", "hard"), default="easy")
     ap.add_argument("--start", default=None, help="ISO 8601 start time, default 2026-11-01T00:00:00Z")
     args = ap.parse_args(argv)
     start = datetime.fromisoformat(args.start.replace("Z", "+00:00")) if args.start else None
-    lines, labels = generate(args.seed, args.hours, start)
+    lines, labels = generate(args.seed, args.hours, start, args.profile)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
     with open(args.labels, "w", newline="", encoding="utf-8") as fh:
