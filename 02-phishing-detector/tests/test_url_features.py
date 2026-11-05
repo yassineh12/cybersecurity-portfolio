@@ -36,5 +36,25 @@ def test_clean_url_is_quiet():
     assert f["uses_https"] == 1
 
 
+def test_brand_impersonation_detected():
+    f = extract("http://paypal-login.evil.xyz/verify")
+    assert f["has_brand_in_host"] == 1
+
+    f2 = extract("https://www.paypal.com/login")
+    assert f2["has_brand_in_host"] == 0
+
+
+def test_tld_length():
+    assert extract("https://example.com/")["tld_length"] == 3
+    assert extract("https://example.info/")["tld_length"] == 4
+
+
+def test_digit_ratio_host():
+    f = extract("http://192.168.4.20/login")
+    assert f["digit_ratio_host"] > 0.5
+    f2 = extract("https://www.google.com/")
+    assert f2["digit_ratio_host"] < 0.1
+
+
 def test_scheme_is_optional():
     assert extract("example.com/path")["host_length"] == len("example.com")

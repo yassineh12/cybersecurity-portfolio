@@ -15,8 +15,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import re
 import sys
+import time
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -27,6 +29,10 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "01-headers-auditor"))
 from crawler import Crawler, Page  # noqa: E402
+
+__version__ = "1.1.0"
+
+log = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────── data models ───
@@ -75,6 +81,7 @@ class ScanResult:
     fingerprints: list[SoftwareFingerprint] = field(default_factory=list)
     cves: list[CVEMatch] = field(default_factory=list)
     findings: list[VulnFinding] = field(default_factory=list)
+    elapsed_seconds: float = 0.0
 
 
 # ──────────── lesson 2: attack-surface mapping ─────────────
@@ -342,6 +349,81 @@ def check_sensitive_files(base_url: str, session: requests.Session) -> list[Vuln
     return findings
 
 
+# ──────────── additional checks ───────────────────────────
+
+def check_cors_misconfig(pages: list[Page]) -> list[VulnFinding]:
+    findings = []
+    seen = set()
+    for page in pages:
+        acao = page.headers.get("access-control-allow-origin", "")
+        acac = page.headers.get("access-control-allow-credentials", "").lower()
+        if acao == "*" and page.url not in seen:
+            seen.add(page.url)
+            sev = "high" if acac == "true" else "medium"
+            findings.append(VulnFinding(
+                id="cors-misconfig",
+                severity=sev,
+                title="CORS allows any origin" + (" with credentials" if acac == "true" else ""),
+                detail=f"Access-Control-Allow-Origin: {acao}",
+                url=page.url,
+                fix="Restrict CORS to trusted origins; never combine '*' with credentials.",
+            ))
+    return findings
+
+
+def check_http_methods(base_url: str, session: requests.Session) -> list[VulnFinding]:
+    findings = []
+    try:
+        resp = session.options(base_url, timeout=8)
+        allow = resp.headers.get("allow", "")
+        if not allow:
+            return findings
+        methods = {m.strip().upper() for m in allow.split(",")}
+        risky = methods & {"PUT", "DELETE", "TRACE", "CONNECT"}
+        if risky:
+            findings.append(VulnFinding(
+                id="risky-methods",
+                severity="medium",
+                title=f"Risky HTTP methods enabled: {', '.join(sorted(risky))}",
+                detail=f"Allow: {allow}",
+                url=base_url,
+                fix="Disable PUT, DELETE, TRACE, CONNECT unless required by the application.",
+            ))
+    except requests.RequestException:
+        pass
+    return findings
+
+
+def check_cookie_security(pages: list[Page]) -> list[VulnFinding]:
+    findings = []
+    seen_cookies: set[str] = set()
+    for page in pages:
+        https = urlparse(page.url).scheme == "https"
+        for line in page.set_cookies:
+            name = line.split("=", 1)[0].strip()
+            if name in seen_cookies:
+                continue
+            seen_cookies.add(name)
+            attrs = {a.strip().split("=", 1)[0].lower() for a in line.split(";")[1:]}
+            issues = []
+            if https and "secure" not in attrs:
+                issues.append("Secure")
+            if "httponly" not in attrs:
+                issues.append("HttpOnly")
+            if "samesite" not in attrs:
+                issues.append("SameSite")
+            if issues:
+                findings.append(VulnFinding(
+                    id="insecure-cookie",
+                    severity="medium",
+                    title=f"Cookie '{name}' missing {', '.join(issues)}",
+                    detail=f"Set-Cookie: {line[:80]}",
+                    url=page.url,
+                    fix=f"Add {', '.join(issues)} to the cookie.",
+                ))
+    return findings
+
+
 # ──────────── lesson 6: reporting ──────────────────────────
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
@@ -405,17 +487,18 @@ def to_markdown(result: ScanResult) -> str:
 # ──────────── main ─────────────────────────────────────────
 
 def scan(target: str, max_pages: int, delay: float) -> ScanResult:
+    t0 = time.monotonic()
     result = ScanResult(target=target, pages_crawled=0)
     session = requests.Session()
     session.headers["User-Agent"] = "SecurityPortfolioCrawler/1.0"
 
-    print(f"\n[1/5] Crawling {target} ...")
+    log.info("[1/6] Crawling %s ...", target)
     crawler = Crawler(target, max_pages=max_pages, delay=delay, respect_robots=True)
     pages = []
     all_fingerprints = []
 
     for page in crawler.crawl():
-        print(f"  [{page.status}] {page.url}")
+        log.info("  [%d] %s", page.status, page.url)
         pages.append(page)
 
         result.forms += map_forms(page.url, BeautifulSoup(page.html, "html.parser"))
@@ -426,7 +509,7 @@ def scan(target: str, max_pages: int, delay: float) -> ScanResult:
     result.query_params = map_query_params(pages)
     result.js_files = map_js_files(pages)
 
-    print(f"\n[2/5] Fingerprinting ({len(result.js_files)} JS files) ...")
+    log.info("[2/6] Fingerprinting (%d JS files) ...", len(result.js_files))
     for js_url in result.js_files[:20]:
         all_fingerprints += fingerprint_js(js_url, session)
 
@@ -437,20 +520,28 @@ def scan(target: str, max_pages: int, delay: float) -> ScanResult:
             seen.add(key)
             result.fingerprints.append(fp)
 
-    print(f"\n[3/5] CVE lookup ({len([f for f in result.fingerprints if f.cpe])} CPEs) ...")
+    cpe_count = len([f for f in result.fingerprints if f.cpe])
+    log.info("[3/6] CVE lookup (%d CPEs) ...", cpe_count)
     for fp in result.fingerprints:
         if fp.cpe:
-            print(f"  querying NVD for {fp.name} {fp.version} ...")
+            log.info("  querying NVD for %s %s ...", fp.name, fp.version)
             result.cves += query_nvd(fp.cpe, session)
 
-    print(f"\n[4/5] Safe active checks ...")
+    log.info("[4/6] Safe active checks ...")
     result.findings += check_reflected_xss(target, result.query_params, session)
     result.findings += check_open_redirect(pages, session)
     result.findings += check_directory_listing(pages, session)
     result.findings += check_sensitive_files(target, session)
 
-    print(f"\n[5/5] Done. {len(result.findings)} findings, "
-          f"{len(result.fingerprints)} fingerprints, {len(result.cves)} CVEs.")
+    log.info("[5/6] Passive checks (CORS, methods, cookies) ...")
+    result.findings += check_cors_misconfig(pages)
+    result.findings += check_http_methods(target, session)
+    result.findings += check_cookie_security(pages)
+
+    elapsed = time.monotonic() - t0
+    result.elapsed_seconds = round(elapsed, 2)
+    log.info("[6/6] Done in %.1fs. %d findings, %d fingerprints, %d CVEs.",
+             elapsed, len(result.findings), len(result.fingerprints), len(result.cves))
 
     return result
 
@@ -462,9 +553,20 @@ def main():
     ap.add_argument("--max-pages", type=int, default=15)
     ap.add_argument("--delay", type=float, default=1.0)
     ap.add_argument("--out", default="report", help="output file prefix")
+    ap.add_argument("--verbose", "-v", action="store_true", help="debug-level output")
+    ap.add_argument("--quiet", "-q", action="store_true", help="errors only")
+    ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = ap.parse_args()
 
-    result = scan(args.url, args.max_pages, args.delay)
+    level = logging.DEBUG if args.verbose else (logging.ERROR if args.quiet else logging.INFO)
+    logging.basicConfig(level=level, format="%(levelname)s %(message)s")
+
+    log.info("Scanning %s ...", args.url)
+    try:
+        result = scan(args.url, args.max_pages, args.delay)
+    except Exception:
+        log.exception("Scan failed")
+        sys.exit(1)
 
     md = to_markdown(result)
     with open(f"{args.out}.md", "w") as fh:
@@ -473,7 +575,7 @@ def main():
     with open(f"{args.out}.json", "w") as fh:
         json.dump(asdict(result), fh, indent=2, default=str)
 
-    print(f"\nReport: {args.out}.md / {args.out}.json")
+    log.info("Report: %s.md / %s.json (%.1fs)", args.out, args.out, result.elapsed_seconds)
 
 
 if __name__ == "__main__":
