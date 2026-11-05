@@ -1,4 +1,5 @@
 from responder import (
+    VERSION,
     build_response,
     detect_from_logs,
     extract_iocs,
@@ -9,6 +10,8 @@ from responder import (
     firewall_to_iptables,
     yara_to_text,
     to_markdown,
+    to_stix,
+    severity_score,
     parse_log_line,
     IOC,
 )
@@ -210,3 +213,93 @@ def test_to_markdown():
     assert "# Incident response report" in md
     assert "198.51.100.7" in md
     assert "iptables" in md
+
+
+def test_version_string():
+    assert VERSION
+    parts = VERSION.split(".")
+    assert len(parts) == 3
+
+
+def test_severity_score_empty():
+    result = severity_score([])
+    assert result["score"] == 0
+    assert result["grade"] == "A"
+
+
+def test_severity_score_critical():
+    alerts = [
+        {"severity": "critical"}, {"severity": "critical"}, {"severity": "high"},
+    ]
+    result = severity_score(alerts)
+    assert result["score"] >= 80
+    assert result["grade"] == "Critical"
+
+
+def test_severity_score_low():
+    alerts = [{"severity": "low"}]
+    result = severity_score(alerts)
+    assert result["score"] <= 10
+    assert result["grade"] == "Low"
+
+
+def test_severity_score_caps_at_100():
+    alerts = [{"severity": "critical"}] * 10
+    result = severity_score(alerts)
+    assert result["score"] == 100
+
+
+def test_to_stix_structure():
+    alerts_data = [
+        {"rule": "sqli-attempt", "severity": "critical",
+         "source_ip": "198.51.100.7", "detail": "SQLi",
+         "evidence": ["GET /id=1 UNION SELECT"], "timestamp": "2026-10-27"},
+    ]
+    pkg = build_response(alerts_data)
+    stix = to_stix(pkg)
+    assert stix["type"] == "bundle"
+    assert len(stix["objects"]) >= 2
+    types = {o["type"] for o in stix["objects"]}
+    assert "identity" in types
+    assert "indicator" in types
+
+
+def test_to_stix_ip_indicator():
+    alerts_data = [
+        {"rule": "scanner-detected", "severity": "high",
+         "source_ip": "198.51.100.7",
+         "detail": "Scanner user-agent: Nikto/2.1.6",
+         "evidence": [], "timestamp": "2026-10-27"},
+    ]
+    pkg = build_response(alerts_data)
+    stix = to_stix(pkg)
+    indicators = [o for o in stix["objects"] if o["type"] == "indicator"]
+    assert any("198.51.100.7" in i.get("pattern", "") for i in indicators)
+
+
+def test_to_stix_empty_package():
+    pkg = build_response([])
+    stix = to_stix(pkg)
+    assert stix["type"] == "bundle"
+    assert len(stix["objects"]) == 1  # just the identity
+
+
+def test_detect_multiple_attack_types():
+    lines = [SAMPLE_LOG, XSS_LOG, TRAVERSAL_LOG]
+    alerts = detect_from_logs(lines)
+    rules = {a.rule for a in alerts}
+    assert "sqli-attempt" in rules
+    assert "xss-attempt" in rules
+    assert "path-traversal" in rules
+
+
+def test_extract_iocs_dedup():
+    alerts_data = [
+        {"rule": "sqli-attempt", "severity": "critical",
+         "source_ip": "198.51.100.7", "detail": "SQLi", "evidence": []},
+        {"rule": "xss-attempt", "severity": "high",
+         "source_ip": "198.51.100.7", "detail": "XSS", "evidence": []},
+    ]
+    iocs = extract_iocs(alerts_data)
+    ip_iocs = [i for i in iocs if i.type == "ip"]
+    assert len(ip_iocs) == 1

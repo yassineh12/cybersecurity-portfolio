@@ -3,12 +3,15 @@ import tempfile
 from pathlib import Path
 
 from checker import (
+    VERSION,
     OWASP_CONTROLS,
     CIS_CONTROLS,
+    NIST_CSF_CONTROLS,
     Control,
     _build_report,
     from_reports,
     to_markdown,
+    grade,
 )
 
 
@@ -176,3 +179,85 @@ def test_framework_scores_in_summary():
     fw_scores = report.summary["framework_scores"]
     assert fw_scores["OWASP"]["pass"] == 1
     assert fw_scores["CIS"]["fail"] == 1
+
+
+def test_version_string():
+    assert VERSION
+    parts = VERSION.split(".")
+    assert len(parts) == 3
+
+
+def test_nist_csf_controls_exist():
+    assert len(NIST_CSF_CONTROLS) >= 5
+    for c in NIST_CSF_CONTROLS:
+        assert c.framework == "NIST-CSF"
+        assert c.control_id
+        assert c.name
+        assert c.remediation
+
+
+def test_grade_boundaries():
+    assert grade(100) == "A"
+    assert grade(90) == "A"
+    assert grade(89) == "B"
+    assert grade(80) == "B"
+    assert grade(79) == "C"
+    assert grade(70) == "C"
+    assert grade(69) == "D"
+    assert grade(60) == "D"
+    assert grade(59) == "F"
+    assert grade(0) == "F"
+
+
+def test_grade_in_report():
+    controls = [
+        Control(framework="OWASP", control_id="A01", name="Test",
+                description="T", status="pass", severity="high"),
+    ]
+    report = _build_report("https://example.com", controls)
+    assert "grade" in report.summary
+    assert report.summary["grade"] == "A"
+
+
+def test_grade_in_markdown():
+    controls = [
+        Control(framework="OWASP", control_id="A01", name="Test",
+                description="T", status="pass", severity="high"),
+    ]
+    report = _build_report("https://example.com", controls)
+    md = to_markdown(report)
+    assert "Grade:" in md
+
+
+def test_build_report_with_nist():
+    controls = [
+        Control(framework="OWASP", control_id="A01", name="BAC",
+                description="T", status="pass", severity="critical"),
+        Control(framework="NIST-CSF", control_id="PR.DS", name="Data Security",
+                description="T", status="fail", severity="critical",
+                findings=["No encryption"]),
+    ]
+    report = _build_report("https://example.com", controls)
+    assert "NIST-CSF" in report.frameworks
+    fw_scores = report.summary["framework_scores"]
+    assert "NIST-CSF" in fw_scores
+
+
+def test_from_reports_with_framework_filter():
+    data = {
+        "target": "https://example.com",
+        "findings": [
+            {"category": "missing-header", "description": "Missing CSP"},
+        ],
+    }
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(data, f)
+        f.flush()
+        report = from_reports([f.name], frameworks=["CIS"])
+
+    frameworks = {c.framework for c in report.controls}
+    assert "CIS" in frameworks
+    assert "OWASP" not in frameworks
+    assert "NIST-CSF" not in frameworks
+    Path(f.name).unlink()

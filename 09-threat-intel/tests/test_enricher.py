@@ -1,4 +1,5 @@
 from enricher import (
+    VERSION,
     is_bogon,
     is_private,
     guess_registry,
@@ -7,6 +8,9 @@ from enricher import (
     enrich_all,
     map_to_mitre,
     to_markdown,
+    to_csv,
+    deduplicate_iocs,
+    TLP_LEVELS,
 )
 
 
@@ -171,3 +175,78 @@ def test_empty_iocs():
     assert report.total_iocs == 0
     assert report.enriched_count == 0
     assert report.iocs == []
+
+
+def test_version_string():
+    assert VERSION
+    parts = VERSION.split(".")
+    assert len(parts) == 3
+
+
+def test_tlp_levels():
+    assert "TLP:CLEAR" in TLP_LEVELS
+    assert "TLP:RED" in TLP_LEVELS
+    assert len(TLP_LEVELS) == 5
+
+
+def test_tlp_in_report():
+    iocs = [{"type": "ip", "value": "8.8.8.8", "severity": "low", "context": "test"}]
+    report = enrich_all(iocs, tlp="TLP:RED")
+    assert report.tlp == "TLP:RED"
+
+
+def test_tlp_in_markdown():
+    iocs = [{"type": "ip", "value": "8.8.8.8", "severity": "low", "context": "test"}]
+    report = enrich_all(iocs, tlp="TLP:GREEN")
+    md = to_markdown(report)
+    assert "TLP:GREEN" in md
+
+
+def test_deduplicate_iocs_removes_dupes():
+    iocs = [
+        {"type": "ip", "value": "1.2.3.4", "severity": "low", "context": "a"},
+        {"type": "ip", "value": "1.2.3.4", "severity": "critical", "context": "b"},
+        {"type": "ip", "value": "5.6.7.8", "severity": "high", "context": "c"},
+    ]
+    result = deduplicate_iocs(iocs)
+    assert len(result) == 2
+    kept = [i for i in result if i["value"] == "1.2.3.4"][0]
+    assert kept["severity"] == "critical"
+
+
+def test_deduplicate_iocs_no_dupes():
+    iocs = [
+        {"type": "ip", "value": "1.2.3.4", "severity": "high", "context": "a"},
+        {"type": "ip", "value": "5.6.7.8", "severity": "low", "context": "b"},
+    ]
+    result = deduplicate_iocs(iocs)
+    assert len(result) == 2
+
+
+def test_to_csv_format():
+    iocs = [
+        {"type": "ip", "value": "198.51.100.7", "severity": "critical",
+         "context": "SQL injection source"},
+    ]
+    report = enrich_all(iocs)
+    csv_out = to_csv(report)
+    lines = csv_out.strip().split("\n")
+    assert len(lines) == 2
+    assert "type" in lines[0]
+    assert "198.51.100.7" in lines[1]
+
+
+def test_to_csv_multiple_rows():
+    iocs = [
+        {"type": "ip", "value": "1.1.1.1", "severity": "high", "context": "scanner"},
+        {"type": "payload", "value": "UNION SELECT", "severity": "critical", "context": "sqli"},
+    ]
+    report = enrich_all(iocs)
+    csv_out = to_csv(report)
+    lines = csv_out.strip().split("\n")
+    assert len(lines) == 3
+
+
+def test_score_capped_at_100():
+    rep = score_ioc("payload", "UNION SELECT", "brute-force SQL injection critical scanner nikto")
+    assert rep.score <= 100

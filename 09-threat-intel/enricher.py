@@ -14,8 +14,11 @@ Does not require API keys — uses only freely available public data.
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import ipaddress
 import json
+import logging
 import re
 import socket
 import sys
@@ -24,6 +27,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+VERSION = "1.1.0"
+
+log = logging.getLogger(__name__)
+
+TLP_LEVELS = ("TLP:CLEAR", "TLP:GREEN", "TLP:AMBER", "TLP:AMBER+STRICT", "TLP:RED")
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +85,7 @@ class ThreatReport:
     generated_at: str
     total_iocs: int = 0
     enriched_count: int = 0
+    tlp: str = "TLP:AMBER"
     iocs: list[EnrichedIOC] = field(default_factory=list)
     attack_summary: dict[str, Any] = field(default_factory=dict)
     mitre_mappings: list[dict[str, str]] = field(default_factory=list)
@@ -360,7 +370,23 @@ def enrich_ioc(raw: dict, resolve_dns: bool = False) -> EnrichedIOC:
     return enriched
 
 
-def enrich_all(iocs: list[dict], resolve_dns: bool = False) -> ThreatReport:
+def deduplicate_iocs(iocs: list[dict]) -> list[dict]:
+    """Remove duplicate IOCs, keeping the highest-severity instance."""
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
+    seen: dict[str, dict] = {}
+    for ioc in iocs:
+        key = f"{ioc.get('type', '')}:{ioc.get('value', '')}"
+        if key not in seen:
+            seen[key] = ioc
+        else:
+            existing_rank = severity_order.get(seen[key].get("severity", "unknown"), 4)
+            new_rank = severity_order.get(ioc.get("severity", "unknown"), 4)
+            if new_rank < existing_rank:
+                seen[key] = ioc
+    return list(seen.values())
+
+
+def enrich_all(iocs: list[dict], resolve_dns: bool = False, tlp: str = "TLP:AMBER") -> ThreatReport:
     """Enrich all IOCs and build the full threat report."""
     enriched: list[EnrichedIOC] = []
     categories: set[str] = set()
@@ -390,6 +416,7 @@ def enrich_all(iocs: list[dict], resolve_dns: bool = False) -> ThreatReport:
         generated_at=datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         total_iocs=len(iocs),
         enriched_count=len(enriched),
+        tlp=tlp,
         iocs=enriched,
         attack_summary={
             "severity_breakdown": dict(severity_counts),
@@ -405,9 +432,28 @@ def enrich_all(iocs: list[dict], resolve_dns: bool = False) -> ThreatReport:
 # Output formatting
 # ---------------------------------------------------------------------------
 
+def to_csv(report: ThreatReport) -> str:
+    """Render enriched IOCs as CSV."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["type", "value", "severity", "reputation_score",
+                     "category", "confidence", "tags", "context"])
+    for e in report.iocs:
+        rep_score = e.reputation.score if e.reputation else 0
+        rep_cat = e.reputation.category if e.reputation else ""
+        rep_conf = e.reputation.confidence if e.reputation else ""
+        writer.writerow([
+            e.type, e.value, e.original_severity,
+            rep_score, rep_cat, rep_conf,
+            ";".join(e.tags), e.original_context,
+        ])
+    return buf.getvalue()
+
+
 def to_markdown(report: ThreatReport) -> str:
     """Render the threat report as markdown."""
     lines = ["# Threat intelligence report", ""]
+    lines.append(f"**Classification:** {report.tlp}")
     lines.append(f"Generated: {report.generated_at}")
     lines.append(f"IOCs analysed: {report.total_iocs}")
     lines.append("")
@@ -484,14 +530,26 @@ def main():
                         help="Attempt reverse DNS lookups (requires network)")
     parser.add_argument("--out", default="enriched",
                         help="Output base name (writes .md and .json)")
+    parser.add_argument("--format", choices=["json", "markdown", "csv"], default="markdown",
+                        help="Primary output format (default: markdown)")
+    parser.add_argument("--tlp", choices=list(TLP_LEVELS), default="TLP:AMBER",
+                        help="Traffic Light Protocol marking (default: TLP:AMBER)")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Enable debug logging")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(levelname)s %(message)s",
+    )
 
     iocs: list[dict] = []
 
     if args.input:
         input_path = Path(args.input)
         if not input_path.exists():
-            print(f"Error: {input_path} not found", file=sys.stderr)
+            log.error("File not found: %s", input_path)
             sys.exit(1)
         data = json.loads(input_path.read_text())
         if isinstance(data, list):
@@ -503,10 +561,20 @@ def main():
         iocs.append({"type": "ip", "value": ip, "severity": "unknown", "context": "manual input"})
 
     if not iocs:
-        print("No IOCs provided. Use a JSON file or --ip flags.", file=sys.stderr)
+        log.error("No IOCs provided. Use a JSON file or --ip flags.")
         sys.exit(1)
 
-    report = enrich_all(iocs, resolve_dns=args.resolve_dns)
+    before = len(iocs)
+    iocs = deduplicate_iocs(iocs)
+    if before != len(iocs):
+        log.info("Deduplicated %d → %d IOCs", before, len(iocs))
+
+    report = enrich_all(iocs, resolve_dns=args.resolve_dns, tlp=args.tlp)
+
+    if args.format == "csv":
+        csv_path = Path(f"{args.out}.csv")
+        csv_path.write_text(to_csv(report))
+        log.info("CSV written to %s", csv_path)
 
     md_path = Path(f"{args.out}.md")
     md_path.write_text(to_markdown(report))
@@ -514,6 +582,7 @@ def main():
     json_path = Path(f"{args.out}.json")
     json_data = {
         "generated_at": report.generated_at,
+        "tlp": report.tlp,
         "total_iocs": report.total_iocs,
         "enriched_count": report.enriched_count,
         "attack_summary": report.attack_summary,
@@ -523,6 +592,7 @@ def main():
     json_path.write_text(json.dumps(json_data, indent=2))
 
     print(f"Report written to {md_path} and {json_path}")
+    print(f"  TLP: {report.tlp}")
     print(f"  IOCs enriched: {report.enriched_count}")
     high_risk = report.attack_summary.get("high_risk_count", 0)
     print(f"  High-risk IOCs: {high_risk}")

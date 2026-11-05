@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import ssl
 import sys
@@ -22,6 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+VERSION = "1.1.0"
+
+log = logging.getLogger(__name__)
 
 try:
     import requests
@@ -141,6 +146,49 @@ OWASP_CONTROLS = [
         description="Application fetches remote resources without validating user-supplied URLs",
         severity="high",
         remediation="Validate and sanitise all client-supplied URLs; use allowlists for outbound requests",
+    ),
+]
+
+NIST_CSF_CONTROLS = [
+    Control(
+        framework="NIST-CSF",
+        control_id="ID.AM",
+        name="Asset Management",
+        description="Physical devices, software, and data flows are inventoried",
+        severity="high",
+        remediation="Maintain an accurate inventory of all hardware and software assets",
+    ),
+    Control(
+        framework="NIST-CSF",
+        control_id="PR.AC",
+        name="Access Control",
+        description="Access to assets and associated facilities is limited",
+        severity="critical",
+        remediation="Implement least-privilege access; use MFA; review permissions regularly",
+    ),
+    Control(
+        framework="NIST-CSF",
+        control_id="PR.DS",
+        name="Data Security",
+        description="Data is managed consistent with risk strategy to protect confidentiality, integrity, and availability",
+        severity="critical",
+        remediation="Encrypt data in transit and at rest; implement DLP controls",
+    ),
+    Control(
+        framework="NIST-CSF",
+        control_id="DE.CM",
+        name="Security Continuous Monitoring",
+        description="Information system and assets are monitored to identify cybersecurity events",
+        severity="high",
+        remediation="Deploy SIEM; monitor network traffic; enable audit logging",
+    ),
+    Control(
+        framework="NIST-CSF",
+        control_id="RS.RP",
+        name="Response Planning",
+        description="Response processes and procedures are executed and maintained",
+        severity="high",
+        remediation="Develop and test incident response plan; conduct tabletop exercises",
     ),
 ]
 
@@ -300,10 +348,14 @@ def check_cookies_live(url: str) -> list[str]:
 import socket
 
 
-def run_live_checks(url: str) -> ComplianceReport:
+def run_live_checks(url: str, frameworks: list[str] | None = None) -> ComplianceReport:
     """Run all live checks against a URL and produce a compliance report."""
+    all_defs = OWASP_CONTROLS + CIS_CONTROLS + NIST_CSF_CONTROLS
+    if frameworks:
+        fw_set = {f.upper() for f in frameworks}
+        all_defs = [c for c in all_defs if c.framework.upper() in fw_set]
     controls = [Control(**{k: v for k, v in asdict(c).items()})
-                for c in OWASP_CONTROLS + CIS_CONTROLS]
+                for c in all_defs]
 
     header_findings, headers = check_headers_live(url)
     tls_findings = check_tls(url)
@@ -386,13 +438,32 @@ def run_live_checks(url: str) -> ComplianceReport:
             ctrl.status = "not-tested"
             ctrl.findings = ["Requires manual review or specialised scanning"]
 
+        elif ctrl.framework == "NIST-CSF":
+            if ctrl.control_id == "PR.DS":
+                if tls_findings:
+                    ctrl.status = "fail"
+                    ctrl.findings = tls_findings
+                elif urlparse(url).scheme == "https":
+                    ctrl.status = "pass"
+                    ctrl.findings = ["Data encrypted in transit via TLS"]
+                else:
+                    ctrl.status = "fail"
+                    ctrl.findings = ["No HTTPS — data transmitted in clear text"]
+            else:
+                ctrl.status = "not-tested"
+                ctrl.findings = ["Requires organisational assessment"]
+
     return _build_report(url, controls)
 
 
-def from_reports(report_files: list[str]) -> ComplianceReport:
+def from_reports(report_files: list[str], frameworks: list[str] | None = None) -> ComplianceReport:
     """Build compliance report from previously generated scan results."""
+    all_defs = OWASP_CONTROLS + CIS_CONTROLS + NIST_CSF_CONTROLS
+    if frameworks:
+        fw_set = {f.upper() for f in frameworks}
+        all_defs = [c for c in all_defs if c.framework.upper() in fw_set]
     controls = [Control(**{k: v for k, v in asdict(c).items()})
-                for c in OWASP_CONTROLS + CIS_CONTROLS]
+                for c in all_defs]
 
     all_findings: dict[str, list[str]] = {}
     target = "multiple-sources"
@@ -486,6 +557,19 @@ def from_reports(report_files: list[str]) -> ComplianceReport:
     return _build_report(target, controls)
 
 
+def grade(pct: int) -> str:
+    """Convert a compliance percentage to a letter grade."""
+    if pct >= 90:
+        return "A"
+    if pct >= 80:
+        return "B"
+    if pct >= 70:
+        return "C"
+    if pct >= 60:
+        return "D"
+    return "F"
+
+
 def _build_report(target: str, controls: list[Control]) -> ComplianceReport:
     """Build the final report with summary statistics."""
     status_counts: dict[str, int] = {"pass": 0, "fail": 0, "warning": 0, "not-tested": 0}
@@ -512,6 +596,7 @@ def _build_report(target: str, controls: list[Control]) -> ComplianceReport:
             "status_counts": status_counts,
             "framework_scores": framework_scores,
             "compliance_percentage": compliance_pct,
+            "grade": grade(compliance_pct),
         },
     )
 
@@ -536,7 +621,7 @@ def to_markdown(report: ComplianceReport) -> str:
     sc = s.get("status_counts", {})
     lines.append("## Summary")
     lines.append("")
-    lines.append(f"**Compliance score: {pct}%**")
+    lines.append(f"**Compliance score: {pct}% (Grade: {s.get('grade', 'N/A')})**")
     lines.append("")
     lines.append(f"| Status | Count |")
     lines.append("|---|---|")
@@ -586,14 +671,24 @@ def main():
                         help="Build report from existing scan JSON files")
     parser.add_argument("--out", default="compliance",
                         help="Output base name (writes .md and .json)")
+    parser.add_argument("--framework", action="append", dest="frameworks",
+                        help="Limit to specific frameworks (repeatable: OWASP, CIS, NIST-CSF)")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Enable debug logging")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = parser.parse_args()
 
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(levelname)s %(message)s",
+    )
+
     if args.from_reports:
-        report = from_reports(args.from_reports)
+        report = from_reports(args.from_reports, frameworks=args.frameworks)
     elif args.url:
-        report = run_live_checks(args.url)
+        report = run_live_checks(args.url, frameworks=args.frameworks)
     else:
-        print("Provide a URL or --from-reports with JSON files.", file=sys.stderr)
+        log.error("Provide a URL or --from-reports with JSON files.")
         sys.exit(1)
 
     md_path = Path(f"{args.out}.md")
@@ -610,9 +705,10 @@ def main():
     json_path.write_text(json.dumps(json_data, indent=2))
 
     pct = report.summary.get("compliance_percentage", 0)
+    g = report.summary.get("grade", "N/A")
     sc = report.summary.get("status_counts", {})
     print(f"Compliance report written to {md_path} and {json_path}")
-    print(f"  Score: {pct}%")
+    print(f"  Score: {pct}% (Grade: {g})")
     print(f"  Pass: {sc.get('pass', 0)} | Fail: {sc.get('fail', 0)} | "
           f"Warning: {sc.get('warning', 0)} | Not tested: {sc.get('not-tested', 0)}")
 
