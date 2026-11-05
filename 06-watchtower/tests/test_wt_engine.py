@@ -260,7 +260,10 @@ def test_default_yaml_matches_brief_and_builtin_defaults():
     assert cfg.scoring == builtin.scoring
     assert cfg.allowlist == ()                       # the example entry ships commented out
     assert all(cfg.rule_enabled(r) for r in KNOWN_RULES)
-    assert cfg.detector_options("enumeration") == {"threshold": 20, "window_seconds": 60}
+    assert cfg.detector_options("enumeration") == {"threshold": 20, "window_seconds": 60,
+                                                   "slow_threshold": 100, "slow_window_seconds": 900}
+    paths = cfg.detector_options("brute_force")["login_paths"]
+    assert "/admin/login" in paths and "/xmlrpc.php" in paths and "/api/login" in paths
     assert cfg.detector_options("brute_force")["threshold"] == 10
     assert cfg.detector_options("brute_force")["window_seconds"] == 300
     assert cfg.detector_options("rate") == {"threshold": 300, "window_seconds": 60}
@@ -283,7 +286,8 @@ def test_partial_config_file_merges_over_defaults(tmp_path):
     p.write_text("detectors:\n  enumeration:\n    threshold: 50\n  rate:\n    enabled: false\n"
                  "rules:\n  SIG-XSS: false\n")
     cfg = load_config(p)
-    assert cfg.detector_options("enumeration") == {"threshold": 50, "window_seconds": 60}
+    assert cfg.detector_options("enumeration")["threshold"] == 50
+    assert cfg.detector_options("enumeration")["window_seconds"] == 60
     assert not cfg.detector_enabled("rate") and cfg.detector_enabled("signatures")
     assert not cfg.rule_enabled("SIG-XSS") and cfg.rule_enabled("SIG-SQLI")
 
@@ -359,7 +363,8 @@ def test_default_detectors_builds_from_config_and_filters_rules(monkeypatch):
                             "rules": {"SIG-XSS": False, "BEH-BRUTE-FORCE": False, "BEH-BRUTE-SUCCESS": False}})
     detectors = dets.default_detectors(cfg)
     assert set(built) == {"signatures", "enumeration", "brute_force"}
-    assert built["enumeration"] == {"threshold": 7, "window_seconds": 60}
+    assert built["enumeration"] == {"threshold": 7, "window_seconds": 60,
+                                    "slow_threshold": 100, "slow_window_seconds": 900}
     assert built["brute_force"]["login_paths"][0] == "/login"
     assert len(detectors) == 2                      # rate disabled, brute force has no rules left
     ev = LogEvent(T0, "192.0.2.1", "GET", "/", "", 200, 0, "", "")
@@ -373,3 +378,17 @@ def test_default_detectors_warns_on_missing_module(monkeypatch):
     with pytest.warns(RuntimeWarning, match="unavailable"):
         detectors = dets.default_detectors(Config())
     assert all("behaviour" not in type(d.inner).__module__ for d in detectors)
+
+
+def test_only_options_the_constructor_accepts_are_passed():
+    from watchtower.detectors import _accepted_options
+
+    class OldEnum:                                   # a detector without the slow window
+        def __init__(self, threshold=20, window_seconds=60):
+            pass
+
+    defaults = Config()
+    assert _accepted_options("enumeration", OldEnum, defaults) == {"threshold": 20, "window_seconds": 60}
+    tuned = config_from_dict({"detectors": {"enumeration": {"slow_threshold": 50}}})
+    with pytest.warns(RuntimeWarning, match="slow_threshold"):
+        assert "slow_threshold" not in _accepted_options("enumeration", OldEnum, tuned)

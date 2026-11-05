@@ -86,7 +86,7 @@ def test_exploit_success_detected_and_scored():
                 detail="2 matching request(s). 1 request(s) were answered with HTTP 2xx.")
     assert not exploit_succeeded(plain)
     assert exploit_succeeded(won)
-    assert score_alerts([won]) == 85 + 15
+    assert score_alerts([won]) == 85             # already escalated: no second bonus
     # a 2xx on a recon alert is normal and must not count as exploit success
     assert not exploit_succeeded(alert("SIG-UA-SCANNER", "medium", evidence=[SQLI_OK]))
 
@@ -178,3 +178,18 @@ def test_success_count_taken_from_detail_when_evidence_is_capped():
     a = alert("SIG-SQLI", "critical", evidence=[SQLI_OK] * 5,
               detail="40 matching request(s). 12 request(s) were answered with HTTP 2xx, so ...")
     assert summarize(IP, [a]).endswith("; 12 attempts returned 200.")
+
+
+def test_2xx_answer_counted_once_lone_alert_keeps_its_severity():
+    # signatures.py escalates SQLI high -> critical for a 2xx and says so in detail
+    sqli_200 = alert("SIG-SQLI", "critical", evidence=[SQLI_OK],
+                     detail="1 request(s) were answered with HTTP 2xx; severity raised to critical.")
+    (inc,) = correlate([sqli_200])
+    assert inc.score == 85 and inc.severity == "critical"
+    # XSS medium -> high for a 2xx: still a lone high, not critical
+    xss_200 = alert("SIG-XSS", "high", detail="answered with HTTP 2xx")
+    assert score_alerts([xss_200]) == 60 and severity_for_score(60) == "high"
+    # Log4Shell cannot be escalated past critical, so the bonus applies instead
+    l4s_200 = alert("SIG-LOG4SHELL", "critical", detail="answered with HTTP 2xx")
+    assert score_alerts([l4s_200]) == 100
+    assert score_alerts([sqli_200]) < score_alerts([l4s_200])

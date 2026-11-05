@@ -36,11 +36,15 @@ KNOWN_RULES: tuple[str, ...] = (
 # Detector name -> its constructor options and their defaults (the brief's values).
 DEFAULT_DETECTOR_OPTIONS: dict[str, dict[str, Any]] = {
     "signatures": {"max_evidence": 5},
-    "enumeration": {"threshold": 20, "window_seconds": 60},
+    "enumeration": {"threshold": 20, "window_seconds": 60,
+                    "slow_threshold": 100, "slow_window_seconds": 900},
     "brute_force": {
         "threshold": 10, "window_seconds": 300,
-        "login_paths": ("/login", "/signin", "/wp-login.php", "/admin",
-                        "/api/auth", "/user/login"),
+        # Matched exactly (a query string is allowed), never as a prefix: a
+        # bare "/admin" prefix would turn every admin-panel form post into a
+        # "failed login".
+        "login_paths": ("/login", "/signin", "/wp-login.php", "/admin", "/admin/login",
+                        "/api/auth", "/api/login", "/user/login", "/xmlrpc.php"),
     },
     "rate": {"threshold": 300, "window_seconds": 60},
 }

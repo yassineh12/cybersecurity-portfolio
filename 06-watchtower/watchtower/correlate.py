@@ -14,7 +14,9 @@ Scoring formula (weights come from ``Config.scoring``; defaults in brackets)::
     campaign    = extra_stage * (distinct kill-chain stages - 1)            [10]
     sequence    = recon_then_exploit  if a recon alert began no later than
                   the first exploit alert                                   [10]
-    success     = exploit_success     if an exploit attempt was answered 2xx [15]
+    success     = exploit_success     if an exploit attempt was answered 2xx
+                                      and its alert was NOT already escalated
+                                      a step by the detector for that 2xx  [15]
                 + brute_success       if BEH-BRUTE-SUCCESS fired             [15]
     score       = clamp(base + breadth + campaign + sequence + success, 0, 100)
 
@@ -22,6 +24,9 @@ Severity comes from the score: >= severity_cutoffs.critical [80] is critical,
 >= high [55] is high, >= medium [30] is medium, otherwise low. With the default
 weights a lone alert keeps its own severity, and only combinations escalate:
 a nikto scan followed by SQL injection (60 + 5 + 10 + 10 = 85) is critical.
+A 2xx answer is counted once: a lone SQL injection answered 200 arrives already
+escalated to critical by the detector and scores 85, not 85 + 15; a Log4Shell
+answered 200 (critical before and after) gets the bonus instead and scores 100.
 """
 
 from __future__ import annotations
@@ -136,7 +141,10 @@ def score_alerts(alerts: list[Alert], scoring: dict[str, Any] | None = None) -> 
     campaign = w["extra_stage"] * max(len(stages) - 1, 0)
     sequence = w["recon_then_exploit"] if _recon_before_exploit(alerts) else 0
     success = 0
-    if any(exploit_succeeded(a) for a in alerts):
+    # The signature detector already raises an alert one severity step for a
+    # 2xx answer; that escalation *is* the success penalty, so the bonus only
+    # applies to a success it could not express (Log4Shell is already critical).
+    if any(exploit_succeeded(a) and not _escalated(a) for a in alerts):
         success += w["exploit_success"]
     if "BEH-BRUTE-SUCCESS" in rules:
         success += w["brute_success"]
@@ -164,12 +172,17 @@ def exploit_succeeded(alert: Alert) -> bool:
     """
     if stage_of(alert) != "exploit":
         return False
-    base = EXPLOIT_BASE_SEVERITY.get(alert.rule_id)
-    if base and SEVERITY_RANK.get(alert.severity, 0) > SEVERITY_RANK[base]:
+    if _escalated(alert):
         return True
     if _DETAIL_2XX_RE.search(alert.detail or ""):
         return True
     return bool(success_statuses(alert))
+
+
+def _escalated(alert: Alert) -> bool:
+    """True when the detector already raised this alert above its rule's base severity."""
+    base = EXPLOIT_BASE_SEVERITY.get(alert.rule_id)
+    return bool(base) and SEVERITY_RANK.get(alert.severity, 0) > SEVERITY_RANK[base]
 
 
 def success_statuses(alert: Alert) -> list[int]:

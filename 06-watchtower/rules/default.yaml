@@ -42,6 +42,13 @@ detectors:
     # Window length in seconds. Longer windows catch slower scans and cost a
     # little more memory per client.
     window_seconds: 60
+    # A second, slower window for patient enumeration that paces itself under
+    # the fast threshold (e.g. one guess every few seconds). Raise
+    # slow_threshold if long-lived clients with many broken links trip it;
+    # lower it or widen the window to catch even slower scans. Ignored by a
+    # detector version that does not support it.
+    slow_threshold: 100
+    slow_window_seconds: 900
 
   # Brute force: repeated failed logins (401/403) from one client, and a
   # success after the failures (a likely compromised account, T1110).
@@ -55,15 +62,21 @@ detectors:
     # Window length in seconds. Five minutes catches most tools; slow
     # credential stuffing spread over hours needs a longer window.
     window_seconds: 300
-    # POSTs to these paths count as login attempts. Add your application's
-    # real login endpoints, or brute force against them goes unseen.
+    # POSTs to these paths count as login attempts. Matched exactly (a query
+    # string is allowed), not as prefixes, so /admin covers only /admin itself
+    # and not every form under /admin/. Add your application's real login
+    # endpoints, or brute force against them goes unseen; avoid broad paths,
+    # or ordinary form submissions answered 403 look like failed logins.
     login_paths:
       - /login
       - /signin
       - /wp-login.php
       - /admin
+      - /admin/login
       - /api/auth
+      - /api/login
       - /user/login
+      - /xmlrpc.php           # WordPress XML-RPC, a favourite brute-force target
 
   # Rate spike: request floods (application-layer DoS, T1499) or very
   # aggressive crawlers.

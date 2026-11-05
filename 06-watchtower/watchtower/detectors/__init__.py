@@ -10,6 +10,7 @@ give a false sense of safety.
 from __future__ import annotations
 
 import importlib
+import inspect
 import warnings
 from typing import TYPE_CHECKING
 
@@ -70,8 +71,33 @@ def default_detectors(config: "Config") -> "list[Detector]":
             warnings.warn(f"detector '{name}' unavailable ({module_name}.{class_name}): {exc}",
                           RuntimeWarning, stacklevel=2)
             continue
-        wrapped = RuleFilter(cls(**config.detector_options(name)), config)
+        wrapped = RuleFilter(cls(**_accepted_options(name, cls, config)), config)
         if getattr(wrapped.inner, "rule_ids", None) and not wrapped.rule_ids:
             continue                                   # every rule switched off
         detectors.append(wrapped)
     return detectors
+
+
+def _accepted_options(name: str, cls: type, config: "Config") -> dict:
+    """The configured options this detector's constructor actually accepts.
+
+    Config and detectors evolve separately; an option the installed detector
+    does not know yet is dropped rather than crashing the scan. If the user
+    changed it from the default, a warning says it had no effect.
+    """
+    from ..config import DEFAULT_DETECTOR_OPTIONS
+
+    options = config.detector_options(name)
+    try:
+        params = inspect.signature(cls.__init__).parameters
+    except (TypeError, ValueError):                    # pragma: no cover - builtins
+        return options
+    if any(p.kind is p.VAR_KEYWORD for p in params.values()):
+        return options
+    accepted = {k: v for k, v in options.items() if k in params}
+    ignored = [k for k in options if k not in params
+               and options[k] != DEFAULT_DETECTOR_OPTIONS.get(name, {}).get(k)]
+    if ignored:
+        warnings.warn(f"detector '{name}' does not support option(s) {', '.join(ignored)}; "
+                      f"ignored", RuntimeWarning, stacklevel=3)
+    return accepted
