@@ -123,13 +123,15 @@ def test_brute_success_without_failures_no_alert():
     assert run(BruteForceDetector(5, 300), evs) == []
     evs = [ev(i, method="POST", path="/login", status=401) for i in range(4)]
     evs.append(ev(10, method="POST", path="/login", status=200))
-    assert run(BruteForceDetector(5, 300), evs) == []
+    # deliberate change: 5 POSTs now trip the status-agnostic volume rule,
+    # but 4 explicit failures are below threshold so no BRUTE-SUCCESS
+    assert [a.rule_id for a in run(BruteForceDetector(5, 300), evs)] == ["BEH-BRUTE-FORCE"]
 
 
 def test_login_path_matching():
     lp = ("/login", "/admin")
     assert is_login_path("/Login/", lp)
-    assert is_login_path("/admin/users", lp)
+    assert not is_login_path("/admin/users", lp)  # deliberate: exact match only
     assert is_login_path("/admin?x=1", lp)
     assert not is_login_path("/administrator", lp)
     assert not is_login_path("/loginx", lp)
@@ -159,3 +161,67 @@ def test_never_raises_on_odd_input():
         det.feed(naive)
         det.feed(None)
         det.flush()
+
+
+def post(sec, status, path="/wp-login.php", ip="192.0.2.1"):
+    return ev(sec, ip=ip, method="POST", path=path, status=status)
+
+
+def test_status_agnostic_wordpress_200_brute_force():
+    alerts = run(BruteForceDetector(10, 300), [post(i, 200) for i in range(12)])
+    assert [a.rule_id for a in alerts] == ["BEH-BRUTE-FORCE"]
+    assert "status-agnostic; lower confidence" in alerts[0].detail
+
+
+def test_status_agnostic_302_no_success_alert():
+    alerts = run(BruteForceDetector(10, 300), [post(i, 302) for i in range(12)])
+    assert [a.rule_id for a in alerts] == ["BEH-BRUTE-FORCE"]
+
+
+def test_explicit_failures_not_flagged_lower_confidence():
+    alerts = run(BruteForceDetector(10, 300), [post(i, 401) for i in range(10)])
+    assert "lower confidence" not in alerts[0].detail
+
+
+def test_success_at_window_edge_with_open_alert():
+    evs = [post(i, 401) for i in range(12)]
+    evs.append(post(2000, 302))  # long after the window: explicit failures expired
+    by = {a.rule_id: a for a in run(BruteForceDetector(10, 300), evs)}
+    assert "BEH-BRUTE-SUCCESS" in by
+    assert "12 failed" in by["BEH-BRUTE-SUCCESS"].detail
+
+
+def test_admin_subpage_not_login():
+    evs = [ev(i, method="POST", path="/admin/products/save", status=403) for i in range(12)]
+    evs.append(ev(20, method="POST", path="/admin/products/save", status=302))
+    assert run(BruteForceDetector(10, 300), evs) == []
+
+
+def test_default_login_paths_include_new_entries():
+    for p in ("/admin/login", "/api/login", "/xmlrpc.php"):
+        assert is_login_path(p, BruteForceDetector().login_paths)
+
+
+def test_enum_counts_403_and_410():
+    evs = [ev(i, status=(403, 410, 404)[i % 3]) for i in range(6)]
+    assert len(run(EnumerationDetector(6, 60), evs)) == 1
+
+
+def test_enum_slow_window():
+    evs = [ev(i * 9, status=404) for i in range(100)]  # ~7 per minute, 100 in 891s
+    alerts = run(EnumerationDetector(20, 60), evs)
+    assert len(alerts) == 1
+    assert alerts[0].rule_id == "BEH-404-BURST"
+    assert "slow enumeration" in alerts[0].detail
+
+
+def test_enum_stray_404_later_does_not_extend():
+    evs = [ev(i) for i in range(25)] + [ev(5 * 3600)]
+    a = run(EnumerationDetector(20, 60), evs)[0]
+    assert a.last_seen == T0 + timedelta(seconds=24)
+    assert a.event_count == 25
+
+
+def test_constructor_signatures():
+    d = EnumerationDetector(slow_threshold=5, slow_window_seconds=10)
+    assert (d.threshold, d.slow_threshold) == (20, 5)

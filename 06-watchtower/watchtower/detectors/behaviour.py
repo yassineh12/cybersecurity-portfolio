@@ -40,13 +40,15 @@ def normalise_path(path: str) -> str:
 
 
 def is_login_path(path: str, login_paths: tuple[str, ...]) -> bool:
-    """True if path equals a login path or sits under it ("/admin/x", "/admin?x")."""
+    """True if path equals a login path, optionally followed by "?query".
+
+    Exact matching only: "/admin" must not swallow every page under /admin
+    (a busy admin UI saving records would look like a brute force).
+    """
     p = normalise_path(path)
-    for lp in login_paths:
-        lp = normalise_path(lp)
-        if p == lp or p.startswith(lp + "/") or p.startswith(lp + "?"):
-            return True
-    return False
+    base = p.split("?", 1)[0]
+    base = base.rstrip("/") or "/" if len(base) > 1 else base
+    return any(base == normalise_path(lp) for lp in login_paths)
 
 
 class _Window:
@@ -58,60 +60,73 @@ class _Window:
         self.evidence: deque[str] = deque(maxlen=MAX_EVIDENCE)
 
 
-class _WindowDetector:
-    """Shared machinery: per-client windows, eviction, open-alert tracking."""
-    rule_ids: tuple[str, ...] = ()
+class _Chan:
+    """One threshold/window pair tracked per client."""
 
     def __init__(self, threshold: int, window_seconds: int) -> None:
         self.threshold = max(1, int(threshold))
         self.window = timedelta(seconds=max(0, window_seconds))
-        self._windows: dict[str, _Window] = {}
-        self._alerts: dict[tuple[str, str], Alert] = {}
-        self._seen = 0
-        self._last_ts: datetime | None = None
+        self.wins: dict[str, _Window] = {}
 
-    # -- helpers -----------------------------------------------------------
     def _evict(self, win: _Window, now: datetime) -> None:
         while win.times and now - win.times[0] > self.window:
             win.times.popleft()
 
-    def _sweep(self, now: datetime) -> None:
-        """Drop clients whose window has emptied (called now and then)."""
-        for ip in list(self._windows):
-            win = self._windows[ip]
+    def peek(self, ip: str, now: datetime) -> _Window | None:
+        """Window for ip after eviction, without creating or adding."""
+        win = self.wins.get(ip)
+        if win is not None:
             self._evict(win, now)
             if not win.times:
-                del self._windows[ip]
+                del self.wins[ip]
+                return None
+        return win
 
-    def _tick(self, now: datetime) -> None:
-        self._seen += 1
-        self._last_ts = now
-        if self._seen % _SWEEP_EVERY == 0:
-            self._sweep(now)
-
-    def _record(self, rule: str, event: LogEvent, win: _Window, build) -> None:
-        """Update the open alert for (client, rule), or open one at threshold."""
-        key = (event.client_ip, rule)
-        alert = self._alerts.get(key)
-        if alert is not None:
-            alert.last_seen = max(alert.last_seen, event.timestamp)
-            alert.event_count += 1
-            if len(alert.evidence) < MAX_EVIDENCE:
-                alert.evidence.append(_line(event))
-            return
-        if len(win.times) >= self.threshold:
-            alert = build(win.times[0], event.timestamp, len(win.times))
-            alert.evidence = list(win.evidence)
-            self._alerts[key] = alert
-
-    def _add(self, event: LogEvent) -> _Window:
-        win = self._windows.get(event.client_ip)
+    def add(self, event: LogEvent) -> _Window:
+        win = self.wins.get(event.client_ip)
         if win is None:
-            win = self._windows[event.client_ip] = _Window()
+            win = self.wins[event.client_ip] = _Window()
         self._evict(win, event.timestamp)
         win.times.append(event.timestamp)
         win.evidence.append(_line(event))
         return win
+
+    def hit(self, win: _Window) -> bool:
+        return len(win.times) >= self.threshold
+
+    def sweep(self, now: datetime) -> None:
+        for ip in list(self.wins):
+            self.peek(ip, now)
+
+    @property
+    def seconds(self) -> int:
+        return int(self.window.total_seconds())
+
+
+class _WindowDetector:
+    """Shared machinery: sweeping, open-alert tracking, safe feed/flush."""
+    rule_ids: tuple[str, ...] = ()
+
+    def __init__(self, *chans: _Chan) -> None:
+        self._chans = chans
+        self._alerts: dict[tuple[str, str], Alert] = {}
+        self._seen = 0
+
+    @property
+    def _windows(self) -> dict[str, _Window]:  # primary channel, for inspection
+        return self._chans[0].wins
+
+    def _tick(self, now: datetime) -> None:
+        self._seen += 1
+        if self._seen % _SWEEP_EVERY == 0:
+            for ch in self._chans:
+                ch.sweep(now)
+
+    def _extend(self, alert: Alert, event: LogEvent) -> None:
+        alert.last_seen = max(alert.last_seen, event.timestamp)
+        alert.event_count += 1
+        if len(alert.evidence) < MAX_EVIDENCE:
+            alert.evidence.append(_line(event))
 
     def feed(self, event: LogEvent) -> list[Alert]:
         try:
@@ -126,39 +141,60 @@ class _WindowDetector:
     def flush(self) -> list[Alert]:
         out = sorted(self._alerts.values(), key=lambda a: (a.first_seen, a.client_ip))
         self._alerts = {}
-        self._windows = {}
+        for ch in self._chans:
+            ch.wins = {}
         return out
 
 
 class EnumerationDetector(_WindowDetector):
-    """BEH-404-BURST (T1595.003, medium): many 404s from one client.
+    """BEH-404-BURST (T1595.003, medium): many misses from one client.
 
     Attacker behaviour: forced browsing (gobuster, dirb, ffuf) guesses
-    thousands of paths and almost all of them miss, so the client generates a
-    burst of 404 responses in seconds. Normal users rarely see more than a
-    couple.
+    thousands of paths and almost all of them miss. 404 is the classic miss,
+    but a WAF often answers 403 and some apps 410, so all three count. A fast
+    window catches loud bursts; a second slow window (default 100 per 15
+    minutes) catches low-and-slow enumeration that stays under the fast one.
 
     False-positive risk: a single-page app or broken front end that requests
     missing assets in a loop, a crawler walking stale links, or many users
-    behind one NAT gateway / corporate proxy sharing an IP. Tune the
-    threshold per site and allowlist known proxies.
+    behind one NAT gateway / corporate proxy sharing an IP. Tune thresholds
+    per site and allowlist known proxies.
     """
     rule_ids = ("BEH-404-BURST",)
+    MISS_STATUSES = (403, 404, 410)
 
-    def __init__(self, threshold: int = 20, window_seconds: int = 60):
-        super().__init__(threshold, window_seconds)
+    def __init__(self, threshold: int = 20, window_seconds: int = 60,
+                 slow_threshold: int = 100, slow_window_seconds: int = 900):
+        self._fast = _Chan(threshold, window_seconds)
+        self._slow = _Chan(slow_threshold, slow_window_seconds)
+        super().__init__(self._fast, self._slow)
+        self.threshold = self._fast.threshold
+        self.slow_threshold = self._slow.threshold
 
     def _feed(self, event: LogEvent) -> None:
-        if event.status != 404:
+        if event.status not in self.MISS_STATUSES:
             return
         self._tick(event.timestamp)
-        win = self._add(event)
-        self._record("BEH-404-BURST", event, win, lambda first, last, n: Alert(
-            rule_id="BEH-404-BURST", title="Burst of 404 responses (path enumeration)",
-            severity="medium", client_ip=event.client_ip, first_seen=first,
-            last_seen=last, event_count=n, technique="T1595.003",
-            detail=(f"{n} 404 responses within {int(self.window.total_seconds())}s "
-                    f"(threshold {self.threshold}); consistent with directory guessing.")))
+        fw, sw = self._fast.add(event), self._slow.add(event)
+        fast, slow = self._fast.hit(fw), self._slow.hit(sw)
+        alert = self._alerts.get((event.client_ip, "BEH-404-BURST"))
+        if alert is not None:
+            # extend only while the client is still above a threshold
+            if fast or slow:
+                self._extend(alert, event)
+            return
+        if not (fast or slow):
+            return
+        win, ch = (fw, self._fast) if fast else (sw, self._slow)
+        n = len(win.times)
+        kind = "" if fast else "slow enumeration: "
+        self._alerts[(event.client_ip, "BEH-404-BURST")] = Alert(
+            rule_id="BEH-404-BURST", title="Burst of 404/403/410 responses (path enumeration)",
+            severity="medium", client_ip=event.client_ip, first_seen=win.times[0],
+            last_seen=event.timestamp, event_count=n, technique="T1595.003",
+            evidence=list(win.evidence),
+            detail=(f"{kind}{n} miss responses (404/403/410) within {ch.seconds}s "
+                    f"(threshold {ch.threshold}); consistent with directory guessing."))
 
 
 class RateDetector(_WindowDetector):
@@ -176,81 +212,120 @@ class RateDetector(_WindowDetector):
     rule_ids = ("BEH-RATE-SPIKE",)
 
     def __init__(self, threshold: int = 300, window_seconds: int = 60):
-        super().__init__(threshold, window_seconds)
+        self._ch = _Chan(threshold, window_seconds)
+        super().__init__(self._ch)
+        self.threshold = self._ch.threshold
 
     def _feed(self, event: LogEvent) -> None:
         self._tick(event.timestamp)
-        win = self._add(event)
-        self._record("BEH-RATE-SPIKE", event, win, lambda first, last, n: Alert(
-            rule_id="BEH-RATE-SPIKE", title="Request rate spike",
-            severity="low", client_ip=event.client_ip, first_seen=first,
-            last_seen=last, event_count=n, technique="T1499",
-            detail=(f"{n} requests within {int(self.window.total_seconds())}s "
-                    f"(threshold {self.threshold}).")))
+        win = self._ch.add(event)
+        alert = self._alerts.get((event.client_ip, "BEH-RATE-SPIKE"))
+        if alert is not None:
+            self._extend(alert, event)
+        elif self._ch.hit(win):
+            n = len(win.times)
+            self._alerts[(event.client_ip, "BEH-RATE-SPIKE")] = Alert(
+                rule_id="BEH-RATE-SPIKE", title="Request rate spike",
+                severity="low", client_ip=event.client_ip, first_seen=win.times[0],
+                last_seen=event.timestamp, event_count=n, technique="T1499",
+                evidence=list(win.evidence),
+                detail=f"{n} requests within {self._ch.seconds}s (threshold {self.threshold}).")
 
 
 class BruteForceDetector(_WindowDetector):
     """BEH-BRUTE-FORCE (T1110, high) and BEH-BRUTE-SUCCESS (T1110, critical).
 
     Attacker behaviour: password guessing or credential stuffing sends many
-    POSTs to a login endpoint that answer 401/403. If the attacker then gets
-    a 2xx or 302 the guessing worked, which is far worse than the guessing
-    itself, hence the separate critical rule.
+    POSTs to a login endpoint. Well-behaved apps answer failures 401/403, but
+    WordPress answers a failed login 200 and many apps redirect (302) back to
+    the form, so the volume of POSTs to login paths is counted whatever the
+    status (flagged "status-agnostic; lower confidence" when the failures
+    were not explicit 401/403). If the client then gets a 2xx or 302 after
+    explicit failures, the guessing probably worked, which is worse than the
+    guessing itself, hence the separate critical rule. A success is not
+    declared for status-agnostic volume alone, since a 200 or 302 is then
+    indistinguishable from a failure.
+
+    Login paths match exactly (or with ?query); "/admin" does not cover
+    every page under /admin.
 
     False-positive risk: many real users behind one NAT gateway or corporate
-    proxy share an IP, and a user who forgot a password plus an automated
-    client with a stale token can also fail repeatedly. A success after
-    failures from a shared IP may be an innocent user; verify against the
-    account's own authentication log.
+    proxy share an IP, and a user who forgot a password or an automated
+    client with a stale token can fail repeatedly. A success after failures
+    from a shared IP may be an innocent user; verify against the account's
+    own authentication log.
     """
     rule_ids = ("BEH-BRUTE-FORCE", "BEH-BRUTE-SUCCESS")
 
     def __init__(self, threshold: int = 10, window_seconds: int = 300,
                  login_paths: tuple[str, ...] = ("/login", "/signin", "/wp-login.php",
-                                                 "/admin", "/api/auth", "/user/login")):
-        super().__init__(threshold, window_seconds)
+                                                 "/admin", "/admin/login", "/api/auth",
+                                                 "/api/login", "/user/login", "/xmlrpc.php")):
+        self._posts = _Chan(threshold, window_seconds)
+        self._fails = _Chan(threshold, window_seconds)
+        super().__init__(self._posts, self._fails)
+        self.threshold = self._posts.threshold
         self.login_paths = tuple(login_paths)
+        self._totals: dict[str, int] = {}   # explicit failures seen, per alerted client
 
     def _feed(self, event: LogEvent) -> None:
         if event.method != "POST" or not is_login_path(event.path, self.login_paths):
             return
+        self._tick(event.timestamp)
         status = event.status
-        if status in (401, 403):
-            self._tick(event.timestamp)
-            win = self._add(event)
-            self._record("BEH-BRUTE-FORCE", event, win, lambda first, last, n: Alert(
-                rule_id="BEH-BRUTE-FORCE", title="Login brute force",
-                severity="high", client_ip=event.client_ip, first_seen=first,
-                last_seen=last, event_count=n, technique="T1110",
-                detail=(f"{n} failed logins within {int(self.window.total_seconds())}s "
-                        f"(threshold {self.threshold}).")))
-        elif 200 <= status < 300 or status == 302:
-            self._success(event)
-
-    def _success(self, event: LogEvent) -> None:
-        win = self._windows.get(event.client_ip)
-        if win is None:
-            return
-        self._evict(win, event.timestamp)
-        failures = len(win.times)
-        if failures < self.threshold:
-            if not win.times:
-                self._windows.pop(event.client_ip, None)
-            return
-        key = (event.client_ip, "BEH-BRUTE-SUCCESS")
+        explicit = status in (401, 403)
+        success = 200 <= status < 300 or status == 302
+        if success:
+            self._maybe_success(event)
+        pw = self._posts.add(event)
+        if explicit:
+            self._fails.add(event)
+        key = (event.client_ip, "BEH-BRUTE-FORCE")
         alert = self._alerts.get(key)
         if alert is not None:
-            alert.last_seen = max(alert.last_seen, event.timestamp)
-            alert.event_count += 1
-            if len(alert.evidence) < MAX_EVIDENCE:
-                alert.evidence.append(_line(event))
+            self._extend(alert, event)
+            if explicit:
+                self._totals[event.client_ip] = self._totals.get(event.client_ip, 0) + 1
             return
-        evidence = list(win.evidence)[-(MAX_EVIDENCE - 1):] + [_line(event)]
+        if not self._posts.hit(pw):
+            return
+        fw = self._fails.peek(event.client_ip, event.timestamp)
+        nfail = len(fw.times) if fw else 0
+        n = len(pw.times)
+        detail = f"{n} login POSTs within {self._posts.seconds}s (threshold {self.threshold})"
+        if nfail < self.threshold:
+            detail += f"; {nfail} explicit 401/403 failures; status-agnostic; lower confidence"
+        self._totals[event.client_ip] = nfail
+        self._alerts[key] = Alert(
+            rule_id="BEH-BRUTE-FORCE", title="Login brute force", severity="high",
+            client_ip=event.client_ip, first_seen=pw.times[0], last_seen=event.timestamp,
+            event_count=n, technique="T1110", evidence=list(pw.evidence),
+            detail=detail + ".")
+
+    def _maybe_success(self, event: LogEvent) -> None:
+        ip = event.client_ip
+        fw = self._fails.peek(ip, event.timestamp)
+        in_window = len(fw.times) if fw else 0
+        open_total = self._totals.get(ip, 0) if (ip, "BEH-BRUTE-FORCE") in self._alerts else 0
+        failures = max(in_window if in_window >= self.threshold else 0, open_total)
+        if failures <= 0:
+            return
+        key = (ip, "BEH-BRUTE-SUCCESS")
+        alert = self._alerts.get(key)
+        if alert is not None:
+            self._extend(alert, event)
+            return
+        pw = self._posts.peek(ip, event.timestamp)
+        prior = list(pw.evidence)[-(MAX_EVIDENCE - 1):] if pw else []
+        first = pw.times[0] if pw else event.timestamp
         self._alerts[key] = Alert(
             rule_id="BEH-BRUTE-SUCCESS", title="Successful login after brute force",
-            severity="critical", client_ip=event.client_ip, first_seen=win.times[0],
+            severity="critical", client_ip=ip, first_seen=first,
             last_seen=event.timestamp, event_count=failures + 1, technique="T1110",
-            evidence=evidence,
+            evidence=prior + [_line(event)],
             detail=(f"Login succeeded (HTTP {event.status}) after {failures} failed "
-                    f"attempts within {int(self.window.total_seconds())}s; "
-                    f"credentials may be compromised."))
+                    f"attempts (401/403); credentials may be compromised."))
+
+    def flush(self) -> list[Alert]:
+        self._totals = {}
+        return super().flush()
