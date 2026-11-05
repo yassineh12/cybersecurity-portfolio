@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/yassineh12/cybersecurity-portfolio/actions/workflows/tests.yml/badge.svg)](https://github.com/yassineh12/cybersecurity-portfolio/actions/workflows/tests.yml)
 
-Nine projects that build on each other. Together they cover the defensive, analytical and offensive sides of web security — from headers auditing through machine-learning classification to purple-team detection engineering, incident response, and threat intelligence.
+Ten projects that build on each other. Together they cover the defensive, analytical and offensive sides of web security — from headers auditing through machine-learning classification to purple-team detection engineering, incident response, threat intelligence, and compliance mapping.
 
 | # | Project | Status | Skills shown |
 |---|---|---|---|
@@ -15,6 +15,7 @@ Nine projects that build on each other. Together they cover the defensive, analy
 | 7 | [Phishing detector API](07-phishing-api/) | Complete | Security engineering, Docker, MLOps, REST APIs |
 | 8 | [Incident response toolkit](08-incident-responder/) | Complete | Incident response, IOC extraction, YARA rules, firewall automation |
 | 9 | [Threat intel enricher](09-threat-intel/) | Complete | Threat intelligence, MITRE ATT&CK, reputation scoring, IOC enrichment |
+| 10 | [Compliance checker](10-compliance-checker/) | Complete | OWASP Top 10, CIS controls, GRC, compliance mapping |
 
 What comes next: see [ROADMAP.md](ROADMAP.md).
 
