@@ -8,10 +8,10 @@ It is the same workflow as the heart-disease notebook in this repo (collect → 
 
 | Lesson | Topic | Files | Status |
 |---|---|---|---|
-| 1 | Collecting labelled data, URL features | `collect_urls.py`, `url_features.py` | ✅ here |
-| 2 | Page-content features, crawled safely in a sandbox | `page_features.py` | next |
-| 3 | Training and evaluating a classifier | `phishing-classifier.ipynb` | |
-| 4 | Explaining predictions and shipping a CLI | `predict.py` | |
+| 1 | Collecting labelled data, URL features | `collect_urls.py`, `url_features.py` | ✅ |
+| 2 | Page-content features, crawled safely in a sandbox | `page_features.py` | ✅ |
+| 3 | Training and evaluating a classifier | `train.py` | ✅ |
+| 4 | Explaining predictions and shipping a CLI | `predict.py` | ✅ |
 
 ---
 

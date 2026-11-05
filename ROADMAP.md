@@ -18,14 +18,14 @@ A project only counts as finished when it has all of these:
 
 - [x] Project 1: headers & TLS auditor
 - [x] Project 2, lesson 1: URL collection and URL features
-- [ ] Project 2, lesson 2: page-content features, crawled in a disposable sandbox
-- [ ] Project 2, lesson 3: training and evaluating the classifier (notebook)
-- [ ] Project 2, lesson 4: explaining predictions, `predict.py` CLI
-- [ ] Project 3, lessons 1–6: lab setup → recon → fingerprinting → CVE matching → safe checks → reporting
+- [x] Project 2, lesson 2: page-content features, crawled in a disposable sandbox
+- [x] Project 2, lesson 3: training and evaluating the classifier
+- [x] Project 2, lesson 4: explaining predictions, `predict.py` CLI
+- [x] Project 3, lessons 1–6: lab setup → recon → fingerprinting → CVE matching → safe checks → reporting
 
 ## Phase 2: make it look professional (alongside phase 1)
 
-- [ ] GitHub Actions workflow that runs `pytest` on every push, with a badge in the README
+- [x] GitHub Actions workflow that runs `pytest` on every push, with a badge in the README
 - [ ] `examples/` folder per project with real output
 - [ ] Tag a release (`v0.1`) when each project meets the definition of done
 - [ ] Pin this repository on your GitHub profile
