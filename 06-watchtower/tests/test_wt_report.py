@@ -64,7 +64,7 @@ def test_markdown_pipe_in_text_does_not_break_table():
 def test_markdown_backtick_in_cell_neutralised():
     md = to_markdown(result([alert(rule="R`x")]))
     row = next(l for l in md.splitlines() if l.startswith("| R"))
-    assert "`" not in row
+    assert "`" not in row.replace("\\`", "")
 
 
 def test_markdown_evidence_cannot_escape_fence():
@@ -144,3 +144,28 @@ def test_odd_values_do_not_raise():
     a = alert(tech="", evidence=[], detail="")
     r = result([a], stages=())
     assert to_markdown(r) and to_html(r)
+
+
+PAYLOAD = "[click-to-unblock](https://evil.example/phish)![t](https://evil.example/px.png)"
+
+
+def test_markdown_link_and_image_injection_neutralised():
+    a = alert(detail=PAYLOAD)
+    a.title = PAYLOAD
+    r = result([a], summary=PAYLOAD)
+    r.incidents[0].client_ip = PAYLOAD
+    md = to_markdown(r)
+    # the only live links allowed are the generated ATT&CK ones
+    assert not re.search(r"(?<!\\)\]\((?!https://attack\.mitre\.org)", md)
+    assert not re.search(r"(?<!\\)!\[", md)
+    assert "\\]\\(" in md
+
+
+def test_markdown_headings_stay_single_line():
+    r = result()
+    r.incidents[0].client_ip = "1.2.3.4\n# Injected\r\n- item\x00"
+    md = to_markdown(r)
+    assert not any(l.startswith("# Injected") or l.startswith("- item") for l in md.splitlines())
+    assert "\x00" not in md
+    heads = [l for l in md.splitlines() if l.startswith("### ")]
+    assert len(heads) == 1

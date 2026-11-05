@@ -73,17 +73,26 @@ def recommended_actions(incident: Incident) -> list[str]:
 
 # ---------------------------------------------------------------- markdown
 
-def _md_cell(value) -> str:
-    """Neutralise a value for use inside a markdown table cell."""
-    s = re.sub(r"\s+", " ", str(value))
-    s = s.replace("\\", "\\\\").replace("|", "\\|").replace("`", "'")
-    return s.replace("<", "&lt;").replace(">", "&gt;")
+_MD_CONTROL = re.compile(r"([\\`*_\[\]()!#<>|])")
+_CTRL_CHARS = re.compile(r"[\x00-\x1f\x7f]+")
 
 
 def _md_text(value) -> str:
-    """Neutralise a value for inline prose (single line, no raw HTML)."""
-    s = re.sub(r"\s+", " ", str(value)).replace("`", "'")
-    return s.replace("<", "&lt;").replace(">", "&gt;")
+    """Neutralise a log-derived value for markdown outside a code fence.
+
+    Log fields are attacker-controlled: unescaped, `[x](https://evil)` becomes
+    a live phishing link and `![t](https://evil/px.png)` an image beacon in the
+    analyst's viewer. Control characters (including newlines) become a space so
+    a value can never open a new heading, list item or table row.
+    """
+    s = _CTRL_CHARS.sub(" ", str(value))
+    s = re.sub(r" {2,}", " ", s).strip()
+    return _MD_CONTROL.sub(r"\\\1", s)
+
+
+def _md_cell(value) -> str:
+    """Same neutralisation for table cells (pipes are escaped as well)."""
+    return _md_text(value)
 
 
 def _fence(lines: list[str]) -> str:
