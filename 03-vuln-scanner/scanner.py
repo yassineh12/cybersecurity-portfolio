@@ -137,7 +137,7 @@ HEADER_PATTERNS = [
     ("x-powered-by", re.compile(r"PHP/([\d.]+)", re.I), "PHP",
      "cpe:2.3:a:php:php:{}:*:*:*:*:*:*:*"),
     ("x-powered-by", re.compile(r"Express", re.I), "Express.js", ""),
-    ("x-powered-by", re.compile(r"ASP\.NET", re.I), "ASP.NET", ""),
+    ("x-powered-by", re.compile(r"ASP\\.NET", re.I), "ASP.NET", ""),
     ("server", re.compile(r"Microsoft-IIS/([\d.]+)", re.I), "Microsoft IIS",
      "cpe:2.3:a:microsoft:iis:{}:*:*:*:*:*:*:*"),
 ]
@@ -200,7 +200,7 @@ def fingerprint_js(js_url: str, session: requests.Session) -> list[SoftwareFinge
     return results
 
 
-# ──────────── lesson 4: CVE matching ───────────────────────
+# ──────────── lesson 4: CVE matching ───────────────────
 
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
@@ -349,7 +349,7 @@ def check_sensitive_files(base_url: str, session: requests.Session) -> list[Vuln
     return findings
 
 
-# ──────────── additional checks ───────────────────────────
+# ──────────── additional checks ───────────────────────
 
 def check_cors_misconfig(pages: list[Page]) -> list[VulnFinding]:
     findings = []
@@ -424,7 +424,7 @@ def check_cookie_security(pages: list[Page]) -> list[VulnFinding]:
     return findings
 
 
-# ──────────── lesson 6: reporting ──────────────────────────
+# ──────────── lesson 6: reporting ──────────────────────
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
@@ -484,7 +484,7 @@ def to_markdown(result: ScanResult) -> str:
     return "\n".join(lines)
 
 
-# ──────────── main ─────────────────────────────────────────
+# ──────────── main ─────────────────────────────
 
 def scan(target: str, max_pages: int, delay: float) -> ScanResult:
     t0 = time.monotonic()
