@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-05T03:46:20.917589+00:00",
+  "generated_at": "2026-11-05T04:02:38.946873+00:00",
   "stats": {
     "lines_read": 2612,
     "lines_parsed": 2612,
@@ -23,10 +23,11 @@
     },
     "incidents_by_severity": {
       "low": 0,
-      "medium": 3,
-      "high": 3,
+      "medium": 4,
+      "high": 2,
       "critical": 5
-    }
+    },
+    "read_errors": []
   },
   "incidents": [
     {
@@ -38,7 +39,7 @@
       ],
       "first_seen": "2026-11-01T00:26:56+00:00",
       "last_seen": "2026-11-01T00:47:11+00:00",
-      "summary": "203.0.113.23 brute-forced a login (41 failed attempts); the brute force ended in a successful login.",
+      "summary": "203.0.113.23 brute-forced a login (40 failed attempts); the brute force ended in a successful login.",
       "alerts": [
         {
           "rule_id": "BEH-BRUTE-FORCE",
@@ -46,8 +47,8 @@
           "severity": "high",
           "client_ip": "203.0.113.23",
           "first_seen": "2026-11-01T00:26:56+00:00",
-          "last_seen": "2026-11-01T00:47:11+00:00",
-          "event_count": 41,
+          "last_seen": "2026-11-01T00:46:39+00:00",
+          "event_count": 40,
           "technique": "T1110",
           "evidence": [
             "203.0.113.23 - - [01/Nov/2026:00:29:30 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
@@ -56,7 +57,7 @@
             "203.0.113.23 - - [01/Nov/2026:00:31:00 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
             "203.0.113.23 - - [01/Nov/2026:00:31:28 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
           ],
-          "detail": "10 login POSTs within 300s (threshold 10)."
+          "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
         },
         {
           "rule_id": "BEH-BRUTE-SUCCESS",
@@ -166,7 +167,7 @@
       ],
       "first_seen": "2026-11-01T03:35:51+00:00",
       "last_seen": "2026-11-01T03:39:41+00:00",
-      "summary": "203.0.113.13 brute-forced a login (41 failed attempts); the brute force ended in a successful login.",
+      "summary": "203.0.113.13 brute-forced a login (40 failed attempts); the brute force ended in a successful login.",
       "alerts": [
         {
           "rule_id": "BEH-BRUTE-FORCE",
@@ -174,8 +175,8 @@
           "severity": "high",
           "client_ip": "203.0.113.13",
           "first_seen": "2026-11-01T03:35:51+00:00",
-          "last_seen": "2026-11-01T03:39:41+00:00",
-          "event_count": 41,
+          "last_seen": "2026-11-01T03:39:34+00:00",
+          "event_count": 40,
           "technique": "T1110",
           "evidence": [
             "203.0.113.13 - - [01/Nov/2026:03:36:22 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
@@ -184,7 +185,7 @@
             "203.0.113.13 - - [01/Nov/2026:03:36:40 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
             "203.0.113.13 - - [01/Nov/2026:03:36:48 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\""
           ],
-          "detail": "10 login POSTs within 300s (threshold 10)."
+          "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
         },
         {
           "rule_id": "BEH-BRUTE-SUCCESS",
@@ -234,37 +235,6 @@
             "203.0.113.24 - - [01/Nov/2026:04:40:22 +0000] \"GET /products?id=1%27%20AND%20%271%27=%272 HTTP/1.1\" 200 8206 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
           ],
           "detail": "5 matching request(s); patterns: sql-variable, order-by, numeric-compare, tautology, quote-or-cmp. 5 request(s) were answered with HTTP 2xx, so the attempt may have succeeded; severity raised to critical."
-        }
-      ]
-    },
-    {
-      "client_ip": "203.0.113.22",
-      "score": 60,
-      "severity": "high",
-      "stages": [
-        "credential-access"
-      ],
-      "first_seen": "2026-11-01T01:00:34+00:00",
-      "last_seen": "2026-11-01T01:04:28+00:00",
-      "summary": "203.0.113.22 brute-forced a login (60 failed attempts).",
-      "alerts": [
-        {
-          "rule_id": "BEH-BRUTE-FORCE",
-          "title": "Login brute force",
-          "severity": "high",
-          "client_ip": "203.0.113.22",
-          "first_seen": "2026-11-01T01:00:34+00:00",
-          "last_seen": "2026-11-01T01:04:28+00:00",
-          "event_count": 60,
-          "technique": "T1110",
-          "evidence": [
-            "203.0.113.22 - - [01/Nov/2026:01:00:56 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2645 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
-            "203.0.113.22 - - [01/Nov/2026:01:01:01 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2583 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
-            "203.0.113.22 - - [01/Nov/2026:01:01:04 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2628 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
-            "203.0.113.22 - - [01/Nov/2026:01:01:08 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2629 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
-            "203.0.113.22 - - [01/Nov/2026:01:01:11 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2509 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
-          ],
-          "detail": "10 login POSTs within 300s (threshold 10); 0 explicit 401/403 failures; status-agnostic; lower confidence."
         }
       ]
     },
@@ -387,7 +357,7 @@
       ],
       "first_seen": "2026-11-01T03:34:33+00:00",
       "last_seen": "2026-11-01T03:35:52+00:00",
-      "summary": "203.0.113.12 ran a gobuster scan, then enumerated paths (80 requests answered 404).",
+      "summary": "203.0.113.12 ran a gobuster scan, then enumerated paths (80 requests answered 404/403/410).",
       "alerts": [
         {
           "rule_id": "SIG-UA-SCANNER",
@@ -436,7 +406,7 @@
       ],
       "first_seen": "2026-11-01T00:39:19+00:00",
       "last_seen": "2026-11-01T00:51:33+00:00",
-      "summary": "203.0.113.21 enumerated paths (150 requests answered 404).",
+      "summary": "203.0.113.21 enumerated paths (150 requests answered 404/403/410).",
       "alerts": [
         {
           "rule_id": "BEH-404-BURST",
@@ -457,6 +427,37 @@
           "detail": "slow enumeration: 100 miss responses (404/403/410) within 900s (threshold 100); consistent with directory guessing."
         }
       ]
+    },
+    {
+      "client_ip": "203.0.113.22",
+      "score": 35,
+      "severity": "medium",
+      "stages": [
+        "credential-access"
+      ],
+      "first_seen": "2026-11-01T01:00:34+00:00",
+      "last_seen": "2026-11-01T01:04:28+00:00",
+      "summary": "203.0.113.22 brute-forced a login (60 login attempts).",
+      "alerts": [
+        {
+          "rule_id": "BEH-BRUTE-FORCE",
+          "title": "Login brute force",
+          "severity": "medium",
+          "client_ip": "203.0.113.22",
+          "first_seen": "2026-11-01T01:00:34+00:00",
+          "last_seen": "2026-11-01T01:04:28+00:00",
+          "event_count": 60,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.22 - - [01/Nov/2026:01:00:56 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2645 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.22 - - [01/Nov/2026:01:01:01 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2583 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.22 - - [01/Nov/2026:01:01:04 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2628 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.22 - - [01/Nov/2026:01:01:08 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2629 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.22 - - [01/Nov/2026:01:01:11 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2509 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "10 login POSTs within 300s (threshold 10); 0 explicit 401/403 failures; status-agnostic; lower confidence."
+        }
+      ]
     }
   ],
   "alerts": [
@@ -466,8 +467,8 @@
       "severity": "high",
       "client_ip": "203.0.113.23",
       "first_seen": "2026-11-01T00:26:56+00:00",
-      "last_seen": "2026-11-01T00:47:11+00:00",
-      "event_count": 41,
+      "last_seen": "2026-11-01T00:46:39+00:00",
+      "event_count": 40,
       "technique": "T1110",
       "evidence": [
         "203.0.113.23 - - [01/Nov/2026:00:29:30 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
@@ -476,7 +477,7 @@
         "203.0.113.23 - - [01/Nov/2026:00:31:00 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
         "203.0.113.23 - - [01/Nov/2026:00:31:28 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
       ],
-      "detail": "10 login POSTs within 300s (threshold 10)."
+      "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
     },
     {
       "rule_id": "BEH-404-BURST",
@@ -517,7 +518,7 @@
     {
       "rule_id": "BEH-BRUTE-FORCE",
       "title": "Login brute force",
-      "severity": "high",
+      "severity": "medium",
       "client_ip": "203.0.113.22",
       "first_seen": "2026-11-01T01:00:34+00:00",
       "last_seen": "2026-11-01T01:04:28+00:00",
@@ -680,8 +681,8 @@
       "severity": "high",
       "client_ip": "203.0.113.13",
       "first_seen": "2026-11-01T03:35:51+00:00",
-      "last_seen": "2026-11-01T03:39:41+00:00",
-      "event_count": 41,
+      "last_seen": "2026-11-01T03:39:34+00:00",
+      "event_count": 40,
       "technique": "T1110",
       "evidence": [
         "203.0.113.13 - - [01/Nov/2026:03:36:22 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
@@ -690,7 +691,7 @@
         "203.0.113.13 - - [01/Nov/2026:03:36:40 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
         "203.0.113.13 - - [01/Nov/2026:03:36:48 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\""
       ],
-      "detail": "10 login POSTs within 300s (threshold 10)."
+      "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
     },
     {
       "rule_id": "BEH-BRUTE-SUCCESS",
