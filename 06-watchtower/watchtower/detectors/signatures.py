@@ -33,14 +33,20 @@ MAX_FIELD_LEN = 8192  # bound regex work on hostile, enormous request lines
 # --------------------------------------------------------------------------
 
 def normalize(text: str) -> str:
-    """URL-decode twice, '+' to space, lower-case.
+    """URL-decode until stable (max 4 passes), '+' to space, lower-case.
 
-    Double decoding catches ``%252e%252e%252f`` (``../`` encoded twice), which
-    a naive single-pass filter would let through.
+    Repeated decoding catches ``%252e%252e%252f`` and deeper nesting
+    (``../`` encoded two or three times), which a naive single-pass filter
+    would let through. Stopping at 4 passes bounds the work.
     """
     try:
         text = str(text)[:MAX_FIELD_LEN]
-        return unquote_plus(unquote_plus(text)).lower().replace("\x00", "")
+        for _ in range(4):
+            new = unquote_plus(text)
+            if new == text:
+                break
+            text = new
+        return text.lower().replace("\x00", "")
     except Exception:
         return ""
 
@@ -73,6 +79,7 @@ def deobfuscate_lookups(text: str) -> str:
 class Pattern:
     name: str
     regex: re.Pattern
+    path_only: bool = False   # match the path, ignore the query string
 
 
 @dataclass(frozen=True)
@@ -87,8 +94,8 @@ class Rule:
     deobfuscate: bool = False                # apply Log4j lookup collapsing
 
 
-def _p(name: str, rx: str) -> Pattern:
-    return Pattern(name, re.compile(rx, re.IGNORECASE | re.DOTALL))
+def _p(name: str, rx: str, path_only: bool = False) -> Pattern:
+    return Pattern(name, re.compile(rx, re.IGNORECASE | re.DOTALL), path_only)
 
 
 SCANNER_NAMES = (
@@ -97,10 +104,21 @@ SCANNER_NAMES = (
     "havij|skipfish|whatweb|burpcollaborator"
 )
 
-_CMD_WORDS = (
-    r"(?:cat|ls|id(?!\w)(?!\s*=)|whoami|uname|wget|curl|nc|ncat|netcat|bash|sh|"
-    r"zsh|python3?|perl|php|ruby|ping|nslookup|rm|chmod|echo|sleep|powershell|"
-    r"cmd|tftp|ifconfig|ipconfig|net\s+user)(?![a-z0-9_-])"
+# A command only counts with a real argument ("cat /etc", "wget http"), so
+# ordinary searches such as "dog && cat toys" or "amazon | echo dot" stay quiet.
+_CMD_ARGS = (
+    r"(?:cat\s+(?:/|~|\.\./|-)|ls\s+(?:-\w|/)|uname\s+-|"
+    r"(?:wget|curl)\s+(?:-\S+\s+)*(?:https?:|ftp:|/)|nc\s+-\w|ncat\s+-\w|netcat\s+-\w|"
+    r"(?:ba|z|da)?sh\s+-c|bash\s+-i|python3?\s+-c|perl\s+-e|php\s+-r|ruby\s+-e|"
+    r"ping\s+-[nc]\s*\d|sleep\s+\d|chmod\s+(?:[+0-7]|-)|rm\s+-\w|echo\s+[`$]|"
+    r"powershell\s+-|cmd(?:\.exe)?\s+/c|net\s+user\s|"
+    r"(?:whoami|ifconfig|ipconfig)(?![a-z0-9_-])|id\s*(?=[;|&`]))"
+)
+# Inside $( ) or backticks the shell runs the content, so bare words suffice.
+_CMD_BARE = (
+    r"(?:cat|ls|id|whoami|uname|wget|curl|nc|ncat|netcat|bash|sh|zsh|python3?|"
+    r"perl|php|ruby|ping|nslookup|rm|chmod|echo|sleep|powershell|cmd|tftp|"
+    r"ifconfig|ipconfig)(?![a-z0-9_-])"
 )
 
 RULES: tuple[Rule, ...] = (
@@ -115,15 +133,23 @@ RULES: tuple[Rule, ...] = (
         # Attackers look for leaked secrets and admin leftovers: env files,
         # exposed git repos, config backups, cloud credential files.
         (
-            _p("dotenv", r"/\.env(?:\.[a-z0-9_-]+)?(?:[?/#]|$)"),
-            _p("git-dir", r"/\.git(?:/|$)"),
-            _p("wp-config", r"/wp-config\.php"),
-            _p("server-status", r"/server-(?:status|info)(?:[?/#]|$)"),
-            _p("phpinfo", r"/(?:phpinfo|info)\.php(?:[?#]|$)"),
-            _p("backup-ext", r"\.(?:bak|old|orig|save|swp|sql|sql\.gz|tar\.gz|tgz|rar)(?:[?#]|$)"),
-            _p("backup-name", r"/(?:backup|dump|database|db|site|www|web)\.(?:zip|tar|gz|7z)(?:[?#]|$)"),
-            _p("cloud-creds", r"/\.(?:aws/credentials|ssh/id_[a-z0-9]+|htpasswd|npmrc|docker/config\.json)"),
-            _p("ds-store", r"/\.ds_store(?:[?#]|$)"),
+            _p("dotenv", r"/\.env(?:\.[a-z0-9_-]+)?(?:[/#]|$)", True),
+            _p("git-dir", r"/\.git(?:/|$)", True),
+            _p("wp-config", r"/wp-config\.php", True),
+            _p("server-status", r"/server-(?:status|info)(?:[/#]|$)", True),
+            _p("phpinfo", r"/(?:phpinfo|info)\.php$", True),
+            _p("actuator", r"/actuator/(?:env|heapdump|threaddump|configprops|mappings|beans|httptrace|jolokia)\b", True),
+            _p("web-config", r"/web\.config$", True),
+            _p("db-admin", r"/(?:phpmyadmin|pma|adminer)(?:/|\.php|$)", True),
+            _p("ssh-key", r"/id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?$", True),
+            _p("cgi-bin", r"/cgi-bin/(?:test-cgi|printenv|php|bash|admin)|/cgi-bin/[^/]*\.(?:sh|pl|cgi)$", True),
+            # Backup archives only for well-known names at web root or one
+            # well-known directory; "/downloads/db.zip" is a normal file.
+            _p("backup-file", r"^/(?:(?:backups?|old|bak|admin|sql|dump|db)/)?"
+               r"(?:backup|db|database|dump|site|www|web|config|wp-config)"
+               r"(?:\.(?:php|json|yml|yaml|ini|conf))?\.(?:bak|old|orig|save|zip|sql|tar\.gz|tgz|tar|gz|rar|7z)$", True),
+            _p("cloud-creds", r"/\.(?:aws/credentials|ssh/id_[a-z0-9]+|htpasswd|htaccess|npmrc|docker/config\.json)", True),
+            _p("ds-store", r"/\.ds_store$", True),
         ),
     ),
     Rule(
@@ -134,9 +160,12 @@ RULES: tuple[Rule, ...] = (
         (
             _p("union-select", r"\bunion(?:\s|/\*.*?\*/)+(?:all(?:\s|/\*.*?\*/)+)?select\b"),
             _p("tautology", r"\b(?:or|and)\s+['\"]?(\w+)['\"]?\s*=\s*['\"]?\1\b"),
+            _p("numeric-compare", r"\b(?:or|and)\s+\d+\s*(?:=|<>|<=|>=|<|>)\s*\d+\b"),
+            _p("sql-variable", r"@@(?:version|servername|hostname|datadir|basedir)\b|\bconvert\s*\(\s*int\b"),
+            _p("order-by", r"\border\s+by\s+\d+\s*(?:--|#|/\*|$)"),
             _p("quote-or-cmp", r"['\"]\s*(?:or|and)\s+['\"]?\w+['\"]?\s*(?:=|<|>|like\b)"),
-            _p("quote-comment", r"['\")]\s*(?:--|#|/\*)"),
-            _p("time-based", r"\b(?:sleep|pg_sleep|benchmark)\s*\(\s*\d|waitfor\s+delay\s+'"),
+            _p("quote-comment", r"['\")]\s*(?:--|#)[\s-]*(?:&|$)"),
+            _p("time-based", r"\b(?:pg_)?sleep\s*\(\s*\d+\s*\)|\bbenchmark\s*\(|waitfor\s+delay\s+'"),
             _p("info-schema", r"\binformation_schema\b|\bsysobjects\b|\bpg_catalog\b"),
             _p("select-fn", r"\bselect\s+(?:\*|null\b|concat\(|group_concat|version\(|user\(|database\(|@@|count\(|char\()"),
             _p("stacked", r";\s*(?:drop|alter|truncate|insert|update|delete)\s+(?:table|database|into|from|\w+\s+set)\b"),
@@ -165,7 +194,7 @@ RULES: tuple[Rule, ...] = (
             _p("repeated-dotdot", r"(?:\.\.[/\\]){2,}"),
             _p("dotdot-target", r"\.\.[/\\]+(?:etc|proc|windows|winnt|boot\.ini|var|root|home|\.ssh|\.git|web-inf)\b"),
             _p("etc-passwd", r"/etc/(?:passwd|shadow|hosts)\b"),
-            _p("win-ini", r"\b(?:win\.ini|boot\.ini)\b|windows[/\\]system32"),
+            _p("win-ini", r"[/\\](?:win\.ini|boot\.ini)\b|windows[/\\]system32"),
             _p("proc-self", r"/proc/self/"),
             _p("nested-dotdot", r"\.\.\.\.[/\\]{2}|\.\.;/"),
         ),
@@ -176,8 +205,8 @@ RULES: tuple[Rule, ...] = (
         # A shell metacharacter followed by a command lets an attacker chain
         # their own command onto the one the application intended to run.
         (
-            _p("chained-cmd", rf"(?:;|\|\||&&|\||\n)\s*{_CMD_WORDS}"),
-            _p("subshell", rf"\$\(\s*{_CMD_WORDS}|`\s*{_CMD_WORDS}[^`]*`"),
+            _p("chained-cmd", rf"(?:;|\|\||&&|\||\n)\s*{_CMD_ARGS}"),
+            _p("subshell", rf"\$\(\s*{_CMD_BARE}|`\s*{_CMD_BARE}[^`]*`"),
             _p("shell-path", r"/bin/(?:ba|z|da|k)?sh\b|\bcmd(?:\.exe)?\s+/c\b|powershell(?:\.exe)?\s+-"),
         ),
         exploit=True,
@@ -211,8 +240,11 @@ def match_rule(rule: Rule, event: LogEvent) -> list[str]:
         text = normalize(_field_value(event, fname))
         if rule.deobfuscate:
             text = deobfuscate_lookups(text)
+        path_text = text.partition("?")[0]
         for pat in rule.patterns:
-            if pat.name not in hits and pat.regex.search(text):
+            if pat.name in hits:
+                continue
+            if pat.regex.search(path_text if pat.path_only else text):
                 hits.append(pat.name)
     return hits
 
