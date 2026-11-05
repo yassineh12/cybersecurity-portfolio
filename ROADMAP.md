@@ -41,6 +41,7 @@ Each new project reuses something that already exists, so the portfolio reads as
 | 6 | Web log analyser that detects scanners | Logs produced by project 3 | SOC analyst, detection engineering | ✅ |
 | 7 | Phishing detector as a small web API in Docker | Project 2 model | Security engineering, MLOps | ✅ |
 | 8 | Incident response toolkit | Project 6 alerts | IR automation, YARA, IOCs | ✅ |
+| 9 | Threat intelligence enricher | Project 8 IOCs | Threat intel, MITRE ATT&CK, reputation scoring | ✅ |
 
 Project 6 is the keystone: you attack your lab with project 3, then catch yourself with project 6. Offence and defence in one story is what "purple team" means, and it is rare in junior portfolios.
 
