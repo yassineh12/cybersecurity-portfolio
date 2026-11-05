@@ -196,6 +196,8 @@ def test_explicit_401_is_high():
 def test_explicit_failures_not_flagged_lower_confidence():
     alerts = run(BruteForceDetector(10, 300), [post(i, 401) for i in range(10)])
     assert "lower confidence" not in alerts[0].detail
+    assert "status-agnostic" not in alerts[0].detail
+    assert "; 10 explicit 401/403 failures" in alerts[0].detail
 
 
 def test_success_at_window_edge_with_open_alert():

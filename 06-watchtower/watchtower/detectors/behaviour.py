@@ -338,6 +338,8 @@ class BruteForceDetector(_WindowDetector):
         detail = f"{n} login POSTs within {self._posts.seconds}s (threshold {self.threshold})"
         if nfail < self.threshold:
             detail += f"; {nfail} explicit 401/403 failures; status-agnostic; lower confidence"
+        else:
+            detail += f"; {nfail} explicit 401/403 failures"
         if event.client_ip in self._inferred:
             detail += "; " + note
         self._totals[event.client_ip] = nfail
