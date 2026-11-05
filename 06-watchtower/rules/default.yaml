@@ -1,0 +1,125 @@
+# WATCHTOWER default configuration.
+#
+# Every knob below trades false positives (alerts on harmless traffic, which
+# train analysts to ignore the report) against missed attacks (an attacker who
+# stays just under a threshold). Copy this file, tune it to your traffic and
+# pass it with --config. Anything you leave out keeps the value shown here.
+# Unknown keys are rejected, so a typo cannot silently disable a detector.
+
+# ---------------------------------------------------------------------------
+# allowlist: clients dropped BEFORE detection. Single IPs or CIDR networks.
+#
+# Use it for your own noisy-but-trusted machines (uptime monitors, load
+# balancer health checks, internal vulnerability scanners). Keep it short:
+# every entry is a blind spot, and an attacker who lands on an allowlisted
+# host (or a shared network you allowlisted) is invisible to WATCHTOWER.
+# Prefer single /32 addresses over wide ranges. Uncomment and edit:
+allowlist: []
+#  - 192.0.2.10            # your uptime monitor
+#  - 198.51.100.0/28       # your internal scanner subnet
+
+# ---------------------------------------------------------------------------
+# detectors: per-detector options. Each one also accepts `enabled: false`.
+detectors:
+
+  # Signature detector: known-bad user agents, sensitive paths and exploit
+  # payloads (SQLi, XSS, traversal, command injection, Log4Shell).
+  signatures:
+    enabled: true
+    # Raw log lines kept as evidence per alert. More helps an analyst confirm
+    # the hit; fewer keeps reports small. Does not change what is detected.
+    max_evidence: 5
+
+  # 404 burst: many "not found" answers in a short window means someone is
+  # guessing paths (directory brute forcing, T1595.003).
+  enumeration:
+    enabled: true
+    # 404s from one client within the window before alerting.
+    # Lower: catches slow, careful enumeration, but a user on a page with a
+    #        few broken images or an old bookmark set starts to trip it.
+    # Higher: fewer false alarms, but low-and-slow tools slip under.
+    threshold: 20
+    # Window length in seconds. Longer windows catch slower scans and cost a
+    # little more memory per client.
+    window_seconds: 60
+
+  # Brute force: repeated failed logins (401/403) from one client, and a
+  # success after the failures (a likely compromised account, T1110).
+  brute_force:
+    enabled: true
+    # Failed logins within the window before alerting.
+    # Lower: catches password spraying sooner, but a user who forgot their
+    #        password (or a misconfigured app retrying) gets flagged.
+    # Higher: quieter, but gives the attacker that many free guesses per window.
+    threshold: 10
+    # Window length in seconds. Five minutes catches most tools; slow
+    # credential stuffing spread over hours needs a longer window.
+    window_seconds: 300
+    # POSTs to these paths count as login attempts. Add your application's
+    # real login endpoints, or brute force against them goes unseen.
+    login_paths:
+      - /login
+      - /signin
+      - /wp-login.php
+      - /admin
+      - /api/auth
+      - /user/login
+
+  # Rate spike: request floods (application-layer DoS, T1499) or very
+  # aggressive crawlers.
+  rate:
+    enabled: true
+    # Requests from one client within the window before alerting.
+    # Lower: catches smaller floods, but busy NAT gateways, office proxies and
+    #        API clients look like attackers.
+    # Higher: only flags real floods; a moderate scraper passes unnoticed.
+    threshold: 300
+    window_seconds: 60
+
+# ---------------------------------------------------------------------------
+# rules: turn individual rule ids off without disabling their detector.
+# Disabling a rule hides its alerts entirely, so prefer tuning a threshold or
+# allowlisting a client when one rule is noisy for a single known source.
+rules:
+  SIG-UA-SCANNER: true        # scanner user agents (nikto, sqlmap, nuclei, ...)
+  SIG-SENSITIVE-PATH: true    # probes for /.env, /.git/, backups, ...
+  SIG-SQLI: true              # SQL injection payloads
+  SIG-XSS: true               # script injection payloads
+  SIG-TRAVERSAL: true         # ../ and /etc/passwd style traversal
+  SIG-CMDI: true              # shell command injection
+  SIG-LOG4SHELL: true         # ${jndi:...} lookups (CVE-2021-44228)
+  BEH-404-BURST: true         # directory enumeration
+  BEH-BRUTE-FORCE: true       # repeated failed logins
+  BEH-BRUTE-SUCCESS: true     # a login success after a brute-force run
+  BEH-RATE-SPIKE: true        # request floods
+
+# ---------------------------------------------------------------------------
+# scoring: how alerts for one client become a 0-100 incident score.
+# See the docstring of watchtower/correlate.py for the full formula.
+scoring:
+  # Points for the most severe alert in the incident (the starting score).
+  severity_points:
+    low: 15
+    medium: 35
+    high: 60
+    critical: 85
+  # Each distinct rule beyond the first adds this much, up to the cap: a
+  # client that trips several unrelated rules is rarely an accident.
+  extra_rule: 5
+  extra_rule_cap: 15
+  # Each kill-chain stage beyond the first (recon, exploit,
+  # credential-access, impact) adds this much: a campaign, not a stray hit.
+  extra_stage: 10
+  # Recon that came before an exploit attempt: the classic scan-then-attack
+  # pattern of a deliberate intruder rather than a drive-by bot.
+  recon_then_exploit: 10
+  # An exploit attempt answered 2xx: the payload may have worked.
+  exploit_success: 15
+  # A login success after brute force: an account is probably compromised.
+  brute_success: 15
+  # Score at or above which an incident gets each severity. Raising them
+  # makes CI gating (--fail-on) quieter; lowering them makes it stricter.
+  severity_cutoffs:
+    medium: 30
+    high: 55
+    critical: 80
