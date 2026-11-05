@@ -25,7 +25,7 @@ A project only counts as finished when it has all of these:
 
 ## Phase 2: make it look professional (alongside phase 1)
 
-- [ ] GitHub Actions workflow that runs `pytest` on every push, with a badge in the README
+- [x] GitHub Actions workflow that runs `pytest` on every push, with a badge in the README
 - [ ] `examples/` folder per project with real output
 - [ ] Tag a release (`v0.1`) when each project meets the definition of done
 - [ ] Pin this repository on your GitHub profile
@@ -38,7 +38,7 @@ Each new project reuses something that already exists, so the portfolio reads as
 |---|---|---|---|
 | 4 | Subdomain and certificate-transparency recon (crt.sh) | Project 1 crawler | Attack-surface management, pentest |
 | 5 | Secrets scanner for public JS bundles | Project 1 crawler | AppSec, cloud security |
-| 6 | Web log analyser that detects scanners | Logs produced by project 3 | SOC analyst, detection engineering |
+| 6 | Web log analyser that detects scanners: **done as WATCHTOWER** | Logs produced by project 3 | SOC analyst, detection engineering |
 | 7 | Phishing detector as a small web API in Docker | Project 2 model | Security engineering, MLOps |
 
 Project 6 is the keystone: you attack your lab with project 3, then catch yourself with project 6. Offence and defence in one story is what "purple team" means, and it is rare in junior portfolios.
