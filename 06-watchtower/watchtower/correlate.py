@@ -49,6 +49,10 @@ RULE_STAGE = {
     "BEH-RATE-SPIKE": "impact",
 }
 
+# Tie-break when alerts start at the same second: tell the story in kill-chain
+# order (the scanner user agent before the payload it carried).
+_RULE_ORDER = {rule: n for n, rule in enumerate(RULE_STAGE)}
+
 # Fallback for rule ids we do not know yet: classify by ATT&CK technique.
 TECHNIQUE_STAGE = {
     "T1595": "recon", "T1592": "recon", "T1590": "recon",
@@ -86,6 +90,8 @@ _NUMBER_WORDS = ("no", "one", "two", "three", "four", "five", "six", "seven", "e
 _STATUS_RE = re.compile(r'"\s+(\d{3})\s+(?:\d+|-)|"status"\s*:\s*"?(\d{3})')
 # User agent: last quoted field of a combined line, or the JSON key.
 _UA_RE = re.compile(r'"http_user_agent"\s*:\s*"((?:[^"\\]|\\.)*)"|"([^"]*)"\s*$')
+# "3 request(s) were answered with HTTP 2xx": the true count, evidence is capped.
+_DETAIL_COUNT_RE = re.compile(r"(\d+)[^.\d]*\b2xx\b", re.IGNORECASE)
 # A detail that reports a 2xx answer ("got a 2xx", "answered 200"), not any 2nn number.
 _DETAIL_2XX_RE = re.compile(r"\b2xx\b|(?:status|answered|returned|response|code)\D{0,3}2\d\d\b",
                             re.IGNORECASE)
@@ -189,6 +195,10 @@ def _merge_weights(scoring: dict[str, Any] | None) -> dict[str, Any]:
     return merged
 
 
+def _chrono(a: Alert) -> tuple:
+    return (a.first_seen, _RULE_ORDER.get(a.rule_id, len(_RULE_ORDER)), a.rule_id)
+
+
 def _recon_before_exploit(alerts: list[Alert]) -> bool:
     recon = [a.first_seen for a in alerts if stage_of(a) == "recon"]
     exploit = [a.first_seen for a in alerts if stage_of(a) == "exploit"]
@@ -206,7 +216,7 @@ def _ordered_stages(alerts: list[Alert]) -> list[str]:
 
 
 def _build_incident(ip: str, alerts: list[Alert], weights: dict[str, Any]) -> Incident:
-    ordered = sorted(alerts, key=lambda a: (a.first_seen, a.rule_id))
+    ordered = sorted(alerts, key=_chrono)
     score = score_alerts(ordered, weights)
     return Incident(
         client_ip=ip,
@@ -228,7 +238,7 @@ def summarize(ip: str, alerts: list[Alert]) -> str:
     e.g. "203.0.113.5 ran a nikto scan, then attempted SQL injection; one
     attempt returned 200."
     """
-    ordered = sorted(alerts, key=lambda a: (a.first_seen, a.rule_id))
+    ordered = sorted(alerts, key=_chrono)
     rules = {a.rule_id for a in ordered}
     phrases: list[str] = []
     for alert in ordered:
@@ -291,10 +301,14 @@ def _success_clause(alerts: list[Alert]) -> str:
     if not winners:
         return ""
     codes = [c for a in winners for c in success_statuses(a)]
-    if not codes:
+    reported = 0
+    for a in winners:
+        m = _DETAIL_COUNT_RE.search(a.detail or "")
+        reported += max(int(m.group(1)) if m else 0, len(success_statuses(a)))
+    n = max(reported, len(codes))
+    if not n:
         return "at least one attempt got a 2xx answer"
-    status = str(codes[0]) if len(set(codes)) == 1 else "2xx"
-    n = len(codes)
+    status = str(codes[0]) if codes and len(set(codes)) == 1 else "2xx"
     verb_subject = "one attempt" if n == 1 else f"{_word(n)} attempts"
     return f"{verb_subject} returned {status}"
 
