@@ -25,7 +25,7 @@ from urllib.parse import unquote_plus
 
 from watchtower.models import SEVERITIES, Alert, LogEvent
 
-MAX_FIELD_LEN = 8192  # bound regex work on hostile, enormous request lines
+MAX_FIELD_LEN = 16384  # per end (head and tail) of a field; bounds regex work on hostile input
 
 
 # --------------------------------------------------------------------------
@@ -40,7 +40,10 @@ def normalize(text: str) -> str:
     would let through. Stopping at 4 passes bounds the work.
     """
     try:
-        text = str(text)[:MAX_FIELD_LEN]
+        text = str(text)
+        if len(text) > 2 * MAX_FIELD_LEN:
+            # Inspect both ends: padding in front must not hide a payload.
+            text = text[:MAX_FIELD_LEN] + "\n" + text[-MAX_FIELD_LEN:]
         for _ in range(4):
             new = unquote_plus(text)
             if new == text:
@@ -51,7 +54,7 @@ def normalize(text: str) -> str:
         return ""
 
 
-_LOOKUP_DEFAULT = re.compile(r"\$\{[^{}$]*?:-([^{}$]*)\}")
+_LOOKUP_DEFAULT = re.compile(r"\$\{[^{}$:]*+(?::(?!-)[^{}$:]*+)*+:-([^{}$]*)\}")
 _LOOKUP_CASE = re.compile(r"\$\{(?:lower|upper):([^{}$]*)\}")
 
 
@@ -158,7 +161,7 @@ RULES: tuple[Rule, ...] = (
         # tautologies to bypass logins, SLEEP() for blind timing probes.
         # Every pattern needs SQL structure, so plain words never match.
         (
-            _p("union-select", r"\bunion(?:\s|/\*.*?\*/)+(?:all(?:\s|/\*.*?\*/)+)?select\b"),
+            _p("union-select", r"\bunion(?:\s|/\*[^*]*\*+(?:[^/*][^*]*\*+)*/)+(?:all(?:\s|/\*[^*]*\*+(?:[^/*][^*]*\*+)*/)+)?select\b"),
             _p("tautology", r"\b(?:or|and)\s+['\"]?(\w+)['\"]?\s*=\s*['\"]?\1\b"),
             _p("numeric-compare", r"\b(?:or|and)\s+\d+\s*(?:=|<>|<=|>=|<|>)\s*\d+\b"),
             _p("sql-variable", r"@@(?:version|servername|hostname|datadir|basedir)\b|\bconvert\s*\(\s*int\b"),
@@ -178,7 +181,7 @@ RULES: tuple[Rule, ...] = (
         # Reflected XSS probes put script or event handlers into parameters.
         (
             _p("script-tag", r"<\s*/?\s*script\b"),
-            _p("html-injection", r"<\s*(?:iframe|svg|img|body|object|embed|video|details)\b[^>]*(?:on\w+\s*=|src\s*=|data\s*=)"),
+            _p("html-injection", r"<\s*(?:iframe|svg|img|body|object|embed|video|details)\b[^<>]{0,256}?(?:on\w+\s*=|src\s*=|data\s*=)"),
             _p("js-uri", r"javascript\s*:"),
             _p("event-handler", r"[\s\"'/<]on(?:error|load|click|mouseover|focus|toggle|start)\s*="),
             _p("js-payload", r"document\.(?:cookie|domain)|\b(?:alert|prompt|confirm)\s*\(\s*(?:1|document|['\"])"),
@@ -205,8 +208,8 @@ RULES: tuple[Rule, ...] = (
         # A shell metacharacter followed by a command lets an attacker chain
         # their own command onto the one the application intended to run.
         (
-            _p("chained-cmd", rf"(?:;|\|\||&&|\||\n)\s*{_CMD_ARGS}"),
-            _p("subshell", rf"\$\(\s*{_CMD_BARE}|`\s*{_CMD_BARE}[^`]*`"),
+            _p("chained-cmd", rf"(?:;|\|\||&&|\||\n)[ \t]*{_CMD_ARGS}"),
+            _p("subshell", rf"\$\([ \t]*{_CMD_BARE}|`[ \t]*{_CMD_BARE}"),
             _p("shell-path", r"/bin/(?:ba|z|da|k)?sh\b|\bcmd(?:\.exe)?\s+/c\b|powershell(?:\.exe)?\s+-"),
         ),
         exploit=True,

