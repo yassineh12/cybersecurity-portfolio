@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/yassineh12/cybersecurity-portfolio/actions/workflows/tests.yml/badge.svg)](https://github.com/yassineh12/cybersecurity-portfolio/actions/workflows/tests.yml)
 
-Seven projects that build on each other. Together they cover the defensive, analytical and offensive sides of web security — from headers auditing through machine-learning classification to purple-team detection engineering.
+Eight projects that build on each other. Together they cover the defensive, analytical and offensive sides of web security — from headers auditing through machine-learning classification to purple-team detection engineering and incident response.
 
 | # | Project | Status | Skills shown |
 |---|---|---|---|
@@ -13,10 +13,11 @@ Seven projects that build on each other. Together they cover the defensive, anal
 | 5 | [Secrets scanner for JS bundles](05-secrets-scanner/) | Complete | AppSec, regex-based detection, cloud security |
 | 6 | [Web log analyser](06-log-analyser/) | Complete | SOC analysis, detection engineering, incident response |
 | 7 | [Phishing detector API](07-phishing-api/) | Complete | Security engineering, Docker, MLOps, REST APIs |
+| 8 | [Incident response toolkit](08-incident-responder/) | Complete | Incident response, IOC extraction, YARA rules, firewall automation |
 
 What comes next: see [ROADMAP.md](ROADMAP.md).
 
-Project 1's `crawler.py` is shared: projects 2, 3, and 5 reuse it. Project 6 detects what project 3 does — offence and defence in one portfolio.
+Project 1's `crawler.py` is shared: projects 2, 3, and 5 reuse it. Project 6 detects what project 3 does, and project 8 generates the response — the full purple-team cycle in one portfolio.
 
 ## Setup
 
