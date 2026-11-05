@@ -1,0 +1,49 @@
+{
+  "single_prediction": {
+    "request": "POST /predict",
+    "body": {"url": "http://paypa1-verify.xyz/login"},
+    "response": {
+      "url": "http://paypa1-verify.xyz/login",
+      "verdict": "phishing",
+      "confidence": 0.92,
+      "threshold": 0.5,
+      "top_features": [
+        {"feature": "suspicious_tld", "value": 1, "importance": 0.1534},
+        {"feature": "num_suspicious_words", "value": 2, "importance": 0.1201},
+        {"feature": "url_length", "value": 38, "importance": 0.0987},
+        {"feature": "host_entropy", "value": 3.41, "importance": 0.0843},
+        {"feature": "path_depth", "value": 1, "importance": 0.0721},
+        {"feature": "num_hyphens_host", "value": 1, "importance": 0.0654},
+        {"feature": "uses_https", "value": 0, "importance": 0.0512},
+        {"feature": "num_subdomains", "value": 0, "importance": 0.0398}
+      ]
+    }
+  },
+  "batch_prediction": {
+    "request": "POST /batch",
+    "body": {
+      "urls": [
+        "https://www.google.com",
+        "http://paypa1-verify.xyz/login",
+        "https://github.com/settings",
+        "http://secure-banking-update.tk/verify.php"
+      ]
+    },
+    "response": {
+      "results": [
+        {"url": "https://www.google.com", "verdict": "safe", "confidence": 0.02},
+        {"url": "http://paypa1-verify.xyz/login", "verdict": "phishing", "confidence": 0.92},
+        {"url": "https://github.com/settings", "verdict": "safe", "confidence": 0.05},
+        {"url": "http://secure-banking-update.tk/verify.php", "verdict": "phishing", "confidence": 0.97}
+      ],
+      "count": 4
+    }
+  },
+  "health_check": {
+    "request": "GET /health",
+    "response": {
+      "status": "ok",
+      "model_loaded": true
+    }
+  }
+}

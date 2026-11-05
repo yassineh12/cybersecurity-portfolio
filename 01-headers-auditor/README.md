@@ -35,6 +35,17 @@ The score starts at 100. Each distinct issue type costs points once (high −15,
 - `auditor.py`: the command-line tool, scoring and report writing
 - `tests/`: unit tests (`python -m pytest tests`)
 
+## Safety and ethics
+
+Only scan sites you own or that explicitly invite testing (for example `testphp.vulnweb.com`, OWASP Juice Shop, DVWA). The crawler obeys `robots.txt` and waits between requests by default. Keep those defaults. Never run this against a production site without written authorisation.
+
+## What I learned
+
+- Security headers are the lowest-hanging fruit in web defence: adding six HTTP headers costs nothing and blocks entire classes of attack (XSS, clickjacking, MIME confusion, referrer leakage).
+- A score is a conversation starter, not a verdict. A site can score A and still have SQL injection. Headers are the hygiene layer, not the whole immune system.
+- Crawling taught me to handle `robots.txt`, relative URLs, fragment stripping, and redirect chains. The crawler became the foundation for three later projects.
+- TLS is not a checkbox. An expired certificate, a server that still accepts TLS 1.0, or a page that mixes HTTP and HTTPS resources all weaken the guarantee.
+
 ## Ideas to extend it
 
 - Compare two scans and report what changed (for example, a regression after a deploy)

@@ -1,0 +1,34 @@
+$ python predict.py "http://paypa1-verify.xyz/secure/login.php?id=8372"
+
+Verdict: PHISHING (confidence: 0.94)
+Threshold: 0.50
+
+Top contributing features:
+  suspicious_tld          = 1      (+0.18)  .xyz is overrepresented in phishing
+  num_suspicious_words    = 3      (+0.14)  "verify", "secure", "login"
+  url_length              = 52     (+0.11)  longer than typical legitimate URLs
+  host_entropy            = 3.72   (+0.09)  moderately random hostname
+  path_depth              = 3      (+0.07)  deep path structure
+  has_at_symbol           = 0      (+0.00)
+  host_is_ip              = 0      (-0.01)
+  uses_https              = 0      (+0.03)  no HTTPS
+
+Overall: 7 of 11 URL features point toward phishing.
+
+---
+
+$ python predict.py "https://www.google.com/search?q=weather"
+
+Verdict: SAFE (confidence: 0.03)
+Threshold: 0.50
+
+Top contributing features:
+  suspicious_tld          = 0      (-0.12)  .com is a standard TLD
+  num_suspicious_words    = 0      (-0.09)  no urgency vocabulary
+  url_length              = 43     (-0.04)  normal length
+  uses_https              = 1      (-0.06)  HTTPS present
+  host_entropy            = 2.45   (-0.03)  low-entropy hostname
+  num_subdomains          = 1      (-0.02)  standard www subdomain
+  is_shortener            = 0      (-0.01)
+
+Overall: no features indicate phishing.

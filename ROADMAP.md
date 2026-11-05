@@ -26,7 +26,7 @@ A project only counts as finished when it has all of these:
 ## Phase 2: make it look professional (alongside phase 1)
 
 - [x] GitHub Actions workflow that runs `pytest` on every push, with a badge in the README
-- [ ] `examples/` folder per project with real output
+- [x] `examples/` folder per project with real output
 - [ ] Tag a release (`v0.1`) when each project meets the definition of done
 - [ ] Pin this repository on your GitHub profile
 
