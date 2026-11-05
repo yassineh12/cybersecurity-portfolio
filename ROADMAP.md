@@ -34,12 +34,12 @@ A project only counts as finished when it has all of these:
 
 Each new project reuses something that already exists, so the portfolio reads as one connected story rather than a pile of exercises.
 
-| # | Project | Builds on | Role it signals |
-|---|---|---|---|
-| 4 | Subdomain and certificate-transparency recon (crt.sh) | Project 1 crawler | Attack-surface management, pentest |
-| 5 | Secrets scanner for public JS bundles | Project 1 crawler | AppSec, cloud security |
-| 6 | Web log analyser that detects scanners | Logs produced by project 3 | SOC analyst, detection engineering |
-| 7 | Phishing detector as a small web API in Docker | Project 2 model | Security engineering, MLOps |
+| # | Project | Builds on | Role it signals | Status |
+|---|---|---|---|---|
+| 4 | Subdomain and certificate-transparency recon (crt.sh) | Project 1 crawler | Attack-surface management, pentest | ✅ |
+| 5 | Secrets scanner for public JS bundles | Project 1 crawler | AppSec, cloud security | ✅ |
+| 6 | Web log analyser that detects scanners | Logs produced by project 3 | SOC analyst, detection engineering | ✅ |
+| 7 | Phishing detector as a small web API in Docker | Project 2 model | Security engineering, MLOps | ✅ |
 
 Project 6 is the keystone: you attack your lab with project 3, then catch yourself with project 6. Offence and defence in one story is what "purple team" means, and it is rare in junior portfolios.
 

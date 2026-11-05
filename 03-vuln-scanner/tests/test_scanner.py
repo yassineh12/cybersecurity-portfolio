@@ -1,9 +1,4 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from scanner import (  # noqa: E402
+from scanner import (
     fingerprint_headers,
     fingerprint_html,
     map_forms,
