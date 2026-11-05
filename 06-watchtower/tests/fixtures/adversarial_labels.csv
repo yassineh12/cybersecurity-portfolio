@@ -1,0 +1,16 @@
+client_ip,label,scenario
+192.0.2.101,benign,search_echo_dot
+192.0.2.102,benign,search_sleep_hours
+192.0.2.103,benign,search_quoted_dashes
+192.0.2.104,benign,api_field_list
+192.0.2.105,benign,admin_expired_csrf
+192.0.2.106,benign,download_db_zip
+192.0.2.107,benign,search_dog_and_cat
+203.0.113.101,malicious,wp_bruteforce_200
+203.0.113.102,malicious,bruteforce_302_failures
+203.0.113.103,malicious,throttled_enumeration
+203.0.113.104,malicious,enumeration_403_waf
+203.0.113.105,malicious,sqli_error_based
+203.0.113.106,malicious,traversal_triple_encoded
+203.0.113.107,malicious,sensitive_uncovered_paths
+203.0.113.108,malicious,slow_bruteforce_success

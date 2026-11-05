@@ -24,3 +24,6 @@ jobs:
           cd 06-watchtower
           python tools/generate_logs.py --out /tmp/wt.log --labels /tmp/wt.csv --seed 7 --hours 6
           python tools/evaluate.py /tmp/wt.log /tmp/wt.csv --min-recall 0.9
+          python tools/generate_logs.py --profile hard --out /tmp/wt-hard.log --labels /tmp/wt-hard.csv --seed 7 --hours 6
+          python tools/evaluate.py /tmp/wt-hard.log /tmp/wt-hard.csv --min-recall 0.9
+          python tools/evaluate.py tests/fixtures/adversarial_access.log tests/fixtures/adversarial_labels.csv --min-recall 0.9
