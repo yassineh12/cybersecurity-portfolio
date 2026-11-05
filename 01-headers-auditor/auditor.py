@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import sys
+import time
 from collections import defaultdict
 from dataclasses import asdict
 from urllib.parse import urlparse
@@ -18,10 +21,12 @@ from urllib.parse import urlparse
 from checks import SEVERITY_POINTS, Finding, check_cookies, check_headers, check_html, check_tls
 from crawler import Crawler
 
+__version__ = "1.2.0"
+
+log = logging.getLogger(__name__)
+
 
 def score(findings: list[Finding]) -> tuple[int, str]:
-    # Each *kind* of problem costs points once, however many pages repeat it:
-    # a missing header on 30 pages is still one misconfiguration.
     unique = {(f.id, f.title): f.severity for f in findings}
     points = max(0, 100 - sum(SEVERITY_POINTS[s] for s in unique.values()))
     for threshold, grade in ((90, "A"), (80, "B"), (70, "C"), (60, "D")):
@@ -46,9 +51,12 @@ def group(findings: list[Finding]) -> list[dict]:
     return sorted(out, key=lambda i: (order[i["severity"]], i["id"]))
 
 
-def to_markdown(target, points, grade, tls_info, pages, issues) -> str:
+def to_markdown(target, points, grade, tls_info, pages, issues, elapsed: float = 0) -> str:
     lines = [f"# Security audit: {target}", "",
              f"**Grade: {grade}** ({points}/100), {len(pages)} pages crawled", ""]
+    if elapsed:
+        lines.append(f"Completed in {elapsed:.1f}s")
+        lines.append("")
     if tls_info:
         if "error" in tls_info:
             lines += [f"TLS: could not connect ({tls_info['error']})", ""]
@@ -72,11 +80,12 @@ def to_markdown(target, points, grade, tls_info, pages, issues) -> str:
 
 
 def audit(target: str, max_pages: int, delay: float, respect_robots: bool = True) -> dict:
+    t0 = time.monotonic()
     findings: list[Finding] = []
     pages = []
     crawler = Crawler(target, max_pages=max_pages, delay=delay, respect_robots=respect_robots)
     for page in crawler.crawl():
-        print(f"  [{page.status}] {page.url}")
+        log.info("[%d] %s", page.status, page.url)
         pages.append(page.url)
         findings += check_headers(page.url, page.headers)
         findings += check_cookies(page.url, page.set_cookies)
@@ -88,9 +97,10 @@ def audit(target: str, max_pages: int, delay: float, respect_robots: bool = True
         tls_info, tls_findings = check_tls(host)
         findings += tls_findings
 
+    elapsed = time.monotonic() - t0
     points, grade = score(findings)
     return {"target": target, "grade": grade, "score": points, "pages": pages,
-            "tls": tls_info, "issues": group(findings)}
+            "tls": tls_info, "issues": group(findings), "elapsed_seconds": round(elapsed, 2)}
 
 
 def main():
@@ -101,18 +111,30 @@ def main():
     ap.add_argument("--out", default="report", help="output file prefix (writes .md and .json)")
     ap.add_argument("--ignore-robots", action="store_true",
                     help="only for your own sites")
+    ap.add_argument("--verbose", "-v", action="store_true", help="debug-level output")
+    ap.add_argument("--quiet", "-q", action="store_true", help="errors only")
+    ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = ap.parse_args()
 
-    print(f"Auditing {args.url} ...")
-    result = audit(args.url, args.max_pages, args.delay, respect_robots=not args.ignore_robots)
+    level = logging.DEBUG if args.verbose else (logging.ERROR if args.quiet else logging.INFO)
+    logging.basicConfig(level=level, format="%(levelname)s %(message)s")
+
+    log.info("Auditing %s ...", args.url)
+    try:
+        result = audit(args.url, args.max_pages, args.delay, respect_robots=not args.ignore_robots)
+    except Exception:
+        log.exception("Audit failed")
+        sys.exit(1)
+
     md = to_markdown(result["target"], result["score"], result["grade"], result["tls"],
-                     result["pages"], result["issues"])
+                     result["pages"], result["issues"], result.get("elapsed_seconds", 0))
     with open(f"{args.out}.md", "w") as fh:
         fh.write(md)
     with open(f"{args.out}.json", "w") as fh:
         json.dump(result, fh, indent=2)
-    print(f"\nGrade {result['grade']} ({result['score']}/100), "
-          f"{len(result['issues'])} issue types. Report: {args.out}.md / {args.out}.json")
+    log.info("Grade %s (%d/100), %d issue types in %.1fs. Report: %s.md / %s.json",
+             result["grade"], result["score"], len(result["issues"]),
+             result.get("elapsed_seconds", 0), args.out, args.out)
 
 
 if __name__ == "__main__":

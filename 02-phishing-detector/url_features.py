@@ -27,6 +27,14 @@ SUSPICIOUS_TLDS = {"xyz", "top", "tk", "ml", "ga", "cf", "gq", "icu", "cyou",
 
 SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "is.gd", "cutt.ly", "ow.ly", "rb.gy"}
 
+BRAND_DOMAINS = {
+    "paypal": "paypal.com", "google": "google.com", "apple": "apple.com",
+    "microsoft": "microsoft.com", "amazon": "amazon.com", "netflix": "netflix.com",
+    "facebook": "facebook.com", "instagram": "instagram.com", "chase": "chase.com",
+    "wellsfargo": "wellsfargo.com", "bankofamerica": "bankofamerica.com",
+    "dropbox": "dropbox.com", "linkedin": "linkedin.com",
+}
+
 
 def shannon_entropy(text: str) -> float:
     """How 'random' a string looks, in bits per character.
@@ -81,6 +89,13 @@ def extract(url: str) -> dict[str, float]:
         # --- the words used ---
         "uses_https": int(parsed.scheme == "https"),
         "num_suspicious_words": sum(word in lowered for word in SUSPICIOUS_WORDS),
+        # --- brand impersonation ---
+        "has_brand_in_host": int(any(
+            brand in host and host != real_domain and not host.endswith("." + real_domain)
+            for brand, real_domain in BRAND_DOMAINS.items()
+        )),
+        "tld_length": len(tld),
+        "digit_ratio_host": round(sum(c.isdigit() for c in host) / max(len(host), 1), 3),
     }
 
 

@@ -74,6 +74,27 @@ def check_headers(url: str, headers: dict[str, str]) -> list[Finding]:
         add("referrer-missing", "low", "Referrer-Policy header missing",
             "Add 'Referrer-Policy: strict-origin-when-cross-origin'.")
 
+    if "permissions-policy" not in headers:
+        add("permissions-policy-missing", "medium",
+            "Permissions-Policy header missing",
+            "Add a Permissions-Policy to restrict browser features (camera, mic, geolocation).")
+
+    acao = headers.get("access-control-allow-origin", "")
+    if acao == "*":
+        add("cors-wildcard", "medium",
+            "CORS allows any origin (Access-Control-Allow-Origin: *)",
+            "Restrict the header to trusted origins instead of '*'.", acao)
+
+    if https and "cross-origin-opener-policy" not in headers:
+        add("coop-missing", "low",
+            "Cross-Origin-Opener-Policy header missing",
+            "Add 'Cross-Origin-Opener-Policy: same-origin' to isolate the browsing context.")
+
+    if https and "cross-origin-resource-policy" not in headers:
+        add("corp-missing", "low",
+            "Cross-Origin-Resource-Policy header missing",
+            "Add 'Cross-Origin-Resource-Policy: same-origin' to prevent cross-origin reads.")
+
     for name in ("server", "x-powered-by", "x-aspnet-version"):
         value = headers.get(name, "")
         if re.search(r"\d", value):                        # a version number leaks

@@ -14,8 +14,8 @@ The second form runs project 6's analyser internally, then responds.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+import logging
 import re
 import sys
 from collections import defaultdict
@@ -24,6 +24,34 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
+
+VERSION = "1.1.0"
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Severity scoring
+# ---------------------------------------------------------------------------
+
+SEVERITY_WEIGHTS = {"critical": 40, "high": 25, "medium": 10, "low": 5}
+
+
+def severity_score(alerts: list[dict]) -> dict[str, Any]:
+    """Compute an overall severity score (0-100) from alert data."""
+    if not alerts:
+        return {"score": 0, "grade": "A", "detail": "No alerts"}
+    raw = sum(SEVERITY_WEIGHTS.get(a.get("severity", "low"), 5) for a in alerts)
+    score = min(raw, 100)
+    if score >= 80:
+        grade = "Critical"
+    elif score >= 60:
+        grade = "High"
+    elif score >= 30:
+        grade = "Medium"
+    else:
+        grade = "Low"
+    return {"score": score, "grade": grade, "total_alerts": len(alerts)}
 
 
 # ---------------------------------------------------------------------------
@@ -539,6 +567,60 @@ def yara_to_text(rules: list[YaraRule]) -> str:
     return "\n\n".join(blocks)
 
 
+def to_stix(pkg: ResponsePackage) -> dict:
+    """Convert the response package to a STIX 2.1 bundle."""
+    objects: list[dict] = []
+    identity = {
+        "type": "identity",
+        "spec_version": "2.1",
+        "id": "identity--incident-responder",
+        "name": "Incident Response Toolkit",
+        "identity_class": "system",
+    }
+    objects.append(identity)
+
+    for ioc in pkg.iocs:
+        if ioc.type == "ip":
+            obs = {
+                "type": "ipv4-addr",
+                "spec_version": "2.1",
+                "id": f"ipv4-addr--{ioc.value.replace('.', '-')}",
+                "value": ioc.value,
+            }
+            objects.append(obs)
+            indicator = {
+                "type": "indicator",
+                "spec_version": "2.1",
+                "id": f"indicator--ip-{ioc.value.replace('.', '-')}",
+                "name": f"Malicious IP: {ioc.value}",
+                "description": ioc.context,
+                "pattern": f"[ipv4-addr:value = '{ioc.value}']",
+                "pattern_type": "stix",
+                "valid_from": pkg.generated_at,
+                "created_by_ref": identity["id"],
+            }
+            objects.append(indicator)
+        elif ioc.type == "user_agent":
+            indicator = {
+                "type": "indicator",
+                "spec_version": "2.1",
+                "id": f"indicator--ua-{hash(ioc.value) % 10**8:08d}",
+                "name": f"Scanner UA: {ioc.value[:50]}",
+                "description": ioc.context,
+                "pattern": f"[network-traffic:extensions.'http-request-ext'.request_header.'User-Agent' = '{ioc.value}']",
+                "pattern_type": "stix",
+                "valid_from": pkg.generated_at,
+                "created_by_ref": identity["id"],
+            }
+            objects.append(indicator)
+
+    return {
+        "type": "bundle",
+        "id": "bundle--incident-response",
+        "objects": objects,
+    }
+
+
 def to_markdown(pkg: ResponsePackage) -> str:
     """Render the full response package as a markdown report."""
     lines = ["# Incident response report", ""]
@@ -618,15 +700,26 @@ def main():
                         help="Input is a raw log file; run detection rules first")
     parser.add_argument("--out", default="response",
                         help="Output base name (writes .md and .json)")
+    parser.add_argument("--format", choices=["json", "markdown", "stix"], default="markdown",
+                        help="Primary output format (default: markdown)")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Enable debug logging")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(levelname)s %(message)s",
+    )
 
     input_path = Path(args.input)
     if not input_path.exists():
-        print(f"Error: {input_path} not found", file=sys.stderr)
+        log.error("File not found: %s", input_path)
         sys.exit(1)
 
     if args.parse_first:
         raw_lines = input_path.read_text().splitlines()
+        log.info("Parsing %d log lines", len(raw_lines))
         log_alerts = detect_from_logs(raw_lines)
         alerts = [asdict(a) for a in log_alerts]
     else:
@@ -635,10 +728,18 @@ def main():
             alerts = alerts.get("alerts", [])
 
     if not alerts:
-        print("No alerts found in input.")
+        log.info("No alerts found in input.")
         sys.exit(0)
 
+    log.info("Processing %d alerts", len(alerts))
     pkg = build_response(alerts)
+    sev = severity_score(alerts)
+    log.info("Severity score: %d (%s)", sev["score"], sev["grade"])
+
+    if args.format == "stix":
+        stix_path = Path(f"{args.out}.stix.json")
+        stix_path.write_text(json.dumps(to_stix(pkg), indent=2))
+        log.info("STIX bundle written to %s", stix_path)
 
     md_path = Path(f"{args.out}.md")
     md_path.write_text(to_markdown(pkg))
@@ -647,6 +748,7 @@ def main():
     json_data = {
         "generated_at": pkg.generated_at,
         "summary": pkg.summary,
+        "severity": sev,
         "iocs": [asdict(i) for i in pkg.iocs],
         "firewall_rules": [asdict(r) for r in pkg.firewall_rules],
         "timeline": [asdict(e) for e in pkg.timeline],
@@ -659,6 +761,7 @@ def main():
 
     print(f"Response package written to {md_path} and {json_path}")
     print(f"  Alerts processed: {pkg.summary['total_alerts']}")
+    print(f"  Severity: {sev['score']}/100 ({sev['grade']})")
     print(f"  IOCs extracted: {pkg.summary['iocs_extracted']}")
     print(f"  Firewall rules: {pkg.summary['firewall_rules_generated']}")
     print(f"  Recommendations: {len(pkg.recommendations)}")

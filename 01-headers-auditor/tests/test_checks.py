@@ -12,6 +12,9 @@ GOOD_HEADERS = {
     "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    "cross-origin-opener-policy": "same-origin",
+    "cross-origin-resource-policy": "same-origin",
     "server": "nginx",
 }
 
@@ -26,7 +29,9 @@ def test_well_configured_site_has_no_header_findings():
 
 def test_bare_https_site_flags_the_basics():
     found = ids(check_headers("https://example.com/", {}))
-    assert {"hsts-missing", "csp-missing", "clickjacking", "nosniff-missing", "referrer-missing"} <= found
+    assert {"hsts-missing", "csp-missing", "clickjacking", "nosniff-missing",
+            "referrer-missing", "permissions-policy-missing",
+            "coop-missing", "corp-missing"} <= found
 
 
 def test_http_page_flagged_but_hsts_not_expected():
@@ -69,6 +74,44 @@ def test_score_counts_each_issue_type_once():
     once = check_headers("https://a.com/1", {})
     assert score(many) == score(once)
     assert score([]) == (100, "A")
+
+
+def test_permissions_policy_present_suppresses_finding():
+    h = dict(GOOD_HEADERS)
+    assert "permissions-policy-missing" not in ids(check_headers("https://example.com/", h))
+    del h["permissions-policy"]
+    assert "permissions-policy-missing" in ids(check_headers("https://example.com/", h))
+
+
+def test_cors_wildcard():
+    h = dict(GOOD_HEADERS, **{"access-control-allow-origin": "*"})
+    assert "cors-wildcard" in ids(check_headers("https://example.com/", h))
+    h["access-control-allow-origin"] = "https://trusted.example.com"
+    assert "cors-wildcard" not in ids(check_headers("https://example.com/", h))
+
+
+def test_tls_finding_ids():
+    from checks import Finding
+    f = Finding("cert-invalid", "high", "TLS certificate is not trusted",
+                "Install a valid certificate.", "https://example.com")
+    assert f.id == "cert-invalid"
+    f2 = Finding("tls-old", "high", "Server negotiated outdated TLSv1",
+                 "Disable everything below TLS 1.2.", "https://example.com")
+    assert f2.id == "tls-old"
+
+
+def test_empty_html_returns_no_findings():
+    assert check_html("https://example.com/", "") == []
+    assert check_html("https://example.com/", None) == []
+
+
+def test_https_with_no_headers_flags_all_expected():
+    found = ids(check_headers("https://example.com/", {}))
+    expected = {"hsts-missing", "csp-missing", "clickjacking", "nosniff-missing",
+                "referrer-missing", "permissions-policy-missing",
+                "coop-missing", "corp-missing"}
+    assert expected <= found
+    assert "no-https" not in found
 
 
 def test_link_extraction_resolves_relative_and_drops_fragments():
