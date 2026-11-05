@@ -44,6 +44,7 @@ access logs ─► parsers ─► time-ordered merge ─► allowlist ─► det
 - **Parsers** handle Apache and nginx combined and common formats, nginx JSON lines and gzip. They never crash on junk: scanners send binary, so logs contain it.
 - **Detectors** are streaming state machines with per-client sliding windows. State for idle clients is dropped, so a million one-off visitors do not exhaust memory.
 - **Correlation** orders each client's alerts into kill-chain stages: recon, exploit, credential access and impact. Recon followed by exploitation, a 2xx answer to an exploit, or a brute-force success raises the score. The formula is in the docstring of `watchtower/correlate.py`.
+- **Hostile input** is expected everywhere. Lines over 64 KB are skipped, client fields must be real IP addresses, a truncated `.gz` keeps the events read so far, and every signature regex runs in linear time. A timing test feeds each rule pathological input, because one crafted request that hangs the scanner would blind it.
 - **Reports** treat every log string as hostile. Log lines are attacker-controlled, so a report that rendered a logged `<script>` would itself be an XSS. HTML is escaped, Markdown fences cannot be broken out of, and the terminal summary strips ANSI escape codes.
 
 ## Tuning
@@ -55,8 +56,10 @@ Every threshold lives in [`rules/default.yaml`](rules/default.yaml), with a comm
 | Exit code | Meaning |
 |---|---|
 | 0 | No incident at or above `--fail-on` (default `high`) |
-| 1 | Bad input: missing file, invalid config or arguments |
+| 1 | The scan cannot be trusted: missing file, invalid config or arguments, nothing parsed, more than `--max-malformed` of the lines malformed (default 0.5), or a file that could not be read to the end |
 | 2 | At least one incident at or above `--fail-on` |
+
+An untrustworthy scan beats a finding, so a partial scan exits 1 even when it found something. A silent "all clear" from a log in the wrong format is the failure a pipeline must never miss. Reports are still written when some lines parsed, and `stats.read_errors` names each file that broke.
 
 `--fail-on` is judged on the whole scan. `--min-severity` only trims the report, so it cannot hide a failure from CI.
 
@@ -78,6 +81,13 @@ python tools/evaluate.py /tmp/hard.log /tmp/hard.csv --min-recall 0.9
 CI runs all three on every push and fails if recall drops below 90%.
 
 **Read the 100% with care.** The adversarial set was built to expose weaknesses, and the fixes were written against it, so it is now a regression test, not an unbiased benchmark. Real traffic will be messier. The next honest step is a fresh holdout set nobody tuned against.
+
+## Known limitations
+
+- **One client, one IP.** An attacker rotating through an IPv6 /64, or a botnet, spreads its traffic below every per-client threshold. Grouping behaviour by network prefix is the next step.
+- **No hostnames.** Servers logging resolved hostnames (`HostnameLookups On`) must switch it off, because non-IP client fields are treated as malformed.
+- **Huge fields.** Fields over 32 KB are inspected at the head and tail only, so a payload buried in the middle of one is missed.
+- **Logs only show requests.** A response body or a `Location` header is not in an access log, so a successful login is inferred from status codes and what the client does next.
 
 ## Files
 
@@ -105,6 +115,7 @@ WATCHTOWER was built in one hackathon-style session by eight AI agents: one supe
 - **False positives are the expensive failure in a SOC.** A search for "dog && cat toys" flagged as command injection trains analysts to ignore the report. Detection rules need structure, not keywords.
 - **Attackers adapt to thresholds.** A scan at one request every four seconds walks under a 20-per-minute rule. A second, slower window catches it.
 - **Logs are attacker-controlled input.** Every tool that displays them, including your own report, has to escape them.
+- **A detector is an attack surface too.** The review found one 268-byte request that hung the scanner for minutes through regex backtracking. An attacker who can blind your detection does not need to evade it.
 
 ## Ethics and scope
 
