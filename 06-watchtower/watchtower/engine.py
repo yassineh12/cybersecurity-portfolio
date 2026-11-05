@@ -48,6 +48,19 @@ def _reorder(events: Iterable[LogEvent], window: int = REORDER_WINDOW) -> Iterat
         yield heapq.heappop(heap)[2]
 
 
+def _guarded(events: Iterable[LogEvent], path: Path, errors: list[str]) -> Iterator[LogEvent]:
+    """Stop a file cleanly at a read error (truncated .gz, I/O error) and record it.
+
+    A corrupt archive must not abort the whole scan: the events already read
+    are real evidence. The error is recorded so the CLI can flag the result
+    as partial instead of letting it pass as a clean scan.
+    """
+    try:
+        yield from events
+    except (OSError, EOFError) as exc:          # gzip.BadGzipFile is an OSError
+        errors.append(f"{path}: {exc.__class__.__name__}: {exc}")
+
+
 def _safe_call(detector: Detector, method: str, *args) -> list[Alert]:
     """Call feed/flush, containing a buggy detector so the rest of the scan survives."""
     try:
@@ -70,7 +83,10 @@ def run(paths: list[str | Path], config: Config | None = None, fmt: str = "auto"
     - ``unique_clients`` counts distinct client IPs that reached the detectors
       (allowlisted clients excluded);
     - ``time_start``/``time_end`` span every parsed event, allowlisted or not,
-      so they describe the period the logs cover.
+      so they describe the period the logs cover;
+    - ``read_errors`` lists "file: message" for each file that stopped early
+      (truncated .gz, I/O error); empty when every file was read to the end.
+      Results from such a scan are partial.
     """
     if config is None:
         config = load_config(None)
@@ -83,10 +99,13 @@ def run(paths: list[str | Path], config: Config | None = None, fmt: str = "auto"
             raise FileNotFoundError(f"log file not found: {p}")
 
     streams, parse_stats = [], []
+    caught: list[list[str]] = []
     for p in paths:
         events, pstats = _parse_file(p, fmt)
-        streams.append(_reorder(events))
+        errs: list[str] = []
+        streams.append(_reorder(_guarded(events, p, errs)))
         parse_stats.append(pstats)
+        caught.append(errs)
 
     allow_cache: dict[str, bool] = {}
     clients: set[str] = set()
@@ -128,9 +147,32 @@ def run(paths: list[str | Path], config: Config | None = None, fmt: str = "auto"
         "files": [str(p) for p in paths],
         "alerts_by_rule": _alerts_by_rule(alerts),
         "incidents_by_severity": _incidents_by_severity(incidents),
+        "read_errors": _read_errors(paths, parse_stats, caught),
     }
     return ScanResult(incidents=incidents, alerts=alerts, stats=stats,
                       generated_at=datetime.now(timezone.utc))
+
+
+def _read_errors(paths: list[Path], parse_stats: list, caught: list[list[str]]) -> list[str]:
+    """One "file: message" per file that could not be read to the end.
+
+    Reads the parser's ``ParseStats.read_error`` when it has one (getattr: older
+    parsers lack the field) and falls back to what ``_guarded`` caught.
+    """
+    errors = []
+    for path, pstats, errs in zip(paths, parse_stats, caught):
+        reported = getattr(pstats, "read_error", "") or ""
+        if reported:
+            # The parser names the file by basename; report the full path instead,
+            # so two "access.log.gz" from different servers stay distinguishable.
+            for prefix in (f"{path}: ", f"{path.name}: "):
+                if reported.startswith(prefix):
+                    reported = reported[len(prefix):]
+                    break
+            errors.append(f"{path}: {reported}")
+        else:
+            errors.extend(errs)
+    return errors
 
 
 def _alerts_by_rule(alerts: list[Alert]) -> dict[str, int]:

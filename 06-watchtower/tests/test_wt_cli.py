@@ -158,3 +158,99 @@ def test_python_dash_m_end_to_end(tmp_path):
     data = json.loads((out / "report.json").read_text())
     assert data["stats"]["lines_malformed"] == 1
     assert data["incidents"][0]["client_ip"] == ip
+
+
+# --- untrustworthy input must not pass CI ---
+
+def _real_modules():
+    for mod in ("watchtower.parsers", "watchtower.report", "watchtower.detectors.signatures",
+                "watchtower.detectors.behaviour"):
+        pytest.importorskip(mod)
+
+
+def test_wrong_format_exits_1_not_0(tmp_path, capsys):
+    _real_modules()
+    log = tmp_path / "access.jsonl"
+    log.write_text("\n".join('{"time": "2026-03-01T12:00:%02dZ", "remote_addr": "192.0.2.1", '
+                             '"request": "GET / HTTP/1.1", "status": 200}' % s for s in range(5)) + "\n")
+    code, _ = call("scan", str(log), "--format", "combined", "--out", str(tmp_path / "r"))
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "no parseable log lines" in err and "--format combined" in err
+    assert not (tmp_path / "r" / "report.json").exists()      # no misleading empty report
+
+
+def test_empty_file_exits_1(tmp_path, capsys):
+    _real_modules()
+    log = tmp_path / "empty.log"
+    log.write_text("")
+    code, _ = call("scan", str(log), "--out", str(tmp_path))
+    assert code == 1
+    assert "input is empty" in capsys.readouterr().err
+
+
+def test_max_malformed_threshold(patched, tmp_path, monkeypatch, capsys):
+    def mostly_garbage(paths, config=None, fmt="auto"):
+        r = fake_result([])
+        r.stats.update(lines_read=10, lines_parsed=3, lines_malformed=7)
+        return r
+
+    monkeypatch.setattr(cli, "run", mostly_garbage)
+    log, out = str(patched["log"]), str(tmp_path)
+    assert call("scan", log, "--out", out)[0] == 1
+    err = capsys.readouterr().err
+    assert "7 of 10 lines malformed" in err and "--max-malformed" in err
+    assert call("scan", log, "--out", out, "--max-malformed", "0.8")[0] == 0
+    assert "warning: 7 of 10 lines malformed" in capsys.readouterr().err   # still warned
+    with pytest.raises(SystemExit) as exc:
+        main(["scan", log, "--max-malformed", "1.5"])
+    assert exc.value.code == 1
+
+
+def test_malformed_lines_warned_even_under_limit(patched, tmp_path, capsys):
+    code, _ = call("scan", str(patched["log"]), "--out", str(tmp_path), "--fail-on", "never")
+    assert code == 0
+    assert "warning: 1 of 10 lines malformed" in capsys.readouterr().err
+
+
+def test_read_error_warns_and_exits_1_even_with_incidents(patched, tmp_path, monkeypatch, capsys):
+    def partial(paths, config=None, fmt="auto"):
+        r = fake_result([alert("SIG-SQLI", "high", "203.0.113.5")])
+        r.stats["read_errors"] = ["access.log.gz: EOFError: truncated"]
+        return r
+
+    monkeypatch.setattr(cli, "run", partial)
+    code, out = call("scan", str(patched["log"]), "--out", str(tmp_path))
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "results are partial" in err and "access.log.gz: EOFError" in err
+    assert "203.0.113.5" in out and "written" in patched          # partial report still written
+
+
+def test_reader_exception_is_one_line_not_traceback(patched, tmp_path, monkeypatch, capsys):
+    import gzip
+
+    def boom(paths, config=None, fmt="auto"):
+        raise gzip.BadGzipFile("Not a gzipped file (b'ab')")
+
+    monkeypatch.setattr(cli, "run", boom)
+    code, _ = call("scan", str(patched["log"]), "--out", str(tmp_path))
+    err = capsys.readouterr().err
+    assert code == 1
+    assert err.strip() == "watchtower: cannot read logs: BadGzipFile: Not a gzipped file (b'ab')"
+
+
+def test_corrupt_gzip_end_to_end_no_traceback(tmp_path):
+    import gzip
+    _real_modules()
+    ts = T0.strftime("%d/%b/%Y:%H:%M:%S +0000")
+    body = "".join(f'192.0.2.1 - - [{ts}] "GET /p{n} HTTP/1.1" 200 5 "-" "Mozilla/5.0"\n' for n in range(3000))
+    data = gzip.compress(body.encode())
+    log = tmp_path / "cut.log.gz"
+    log.write_bytes(data[: len(data) // 2])
+    proc = subprocess.run([sys.executable, "-m", "watchtower", "scan", str(log), "--out", str(tmp_path)],
+                          cwd=ROOT, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr
+    assert "results are partial" in proc.stderr and str(log) in proc.stderr
+    assert proc.stderr.count("cut.log.gz:") == 2            # one warning + one error line, no duplicates

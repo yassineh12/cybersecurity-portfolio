@@ -394,3 +394,45 @@ class TestCli:
             ev.main([str(log_file), str(write_csv(STANDARD_LABELS)), "--min-severity", "urgent"],
                     run_fn=fake_engine([]))
         assert exc.value.code == 2
+
+
+# --------------------------------------------------------------------------
+# terminal safety: log-derived strings are attacker-controlled
+# --------------------------------------------------------------------------
+
+ANSI_IP = "\x1b[2J\x1b[1;1HAll clear: 0 incidents\x1b[8m"
+
+
+class TestTerminalSafety:
+    def test_safe_text_replaces_controls(self):
+        assert ev.safe_text("a\x1bb\x07c\nd\x00e\x9bf") == "a?b?c?d?e?f"
+        assert ev.safe_text("2001:db8::1") == "2001:db8::1"
+
+    def _no_controls(self, text):
+        return all(ch.isprintable() or ch == "\n" for ch in text)
+
+    def test_unlabelled_flagged_ip_sanitised(self, write_csv, log_file, capsys):
+        engine = fake_engine([make_incident(ANSI_IP)])
+        ev.main([str(log_file), str(write_csv(STANDARD_LABELS))], run_fn=engine)
+        out = capsys.readouterr().out
+        assert "\x1b" not in out and self._no_controls(out)
+        assert "?[2J?[1;1HAll clear" in out
+
+    def test_false_positive_and_missed_sanitised(self, write_csv, log_file, capsys):
+        labels = write_csv("client_ip,label,scenario\n"
+                           f"{ANSI_IP},benign,\x1b[31mbrowsing\n"
+                           "203.0.113.1,malicious,sqli\x07\n")
+        ev.main([str(log_file), str(labels)], run_fn=fake_engine([make_incident(ANSI_IP)]))
+        out = capsys.readouterr().out
+        assert "\x1b" not in out and "\x07" not in out and self._no_controls(out)
+        assert "?[31mbrowsing" in out and "sqli?" in out
+
+    def test_rule_ids_sanitised(self, write_csv, log_file, capsys):
+        engine = fake_engine([make_incident("192.0.2.1", ("SIG-X\x1b[2J",))])
+        ev.main([str(log_file), str(write_csv(STANDARD_LABELS))], run_fn=engine)
+        out = capsys.readouterr().out
+        assert "\x1b" not in out and "SIG-X?[2J" in out
+
+    def test_error_message_sanitised(self, write_csv, log_file, capsys):
+        ev.main([str(log_file), str(write_csv("ip\x1b[2J,verdict\n1,2\n"))], run_fn=fake_engine([]))
+        assert "\x1b" not in capsys.readouterr().err

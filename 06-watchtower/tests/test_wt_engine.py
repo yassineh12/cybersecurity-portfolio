@@ -3,6 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import re
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -16,7 +17,7 @@ from watchtower.models import Alert, LogEvent
 T0 = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
 STAT_KEYS = {"lines_read", "lines_parsed", "lines_malformed", "events_allowlisted",
              "unique_clients", "time_start", "time_end", "files", "alerts_by_rule",
-             "incidents_by_severity"}
+             "incidents_by_severity", "read_errors"}
 
 # --- a tiny combined-format parser so these tests do not depend on parsers.py ---
 _LINE = re.compile(r'(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) (\S+) [^"]*" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)"')
@@ -166,6 +167,7 @@ def test_stats_filled_per_brief(tmp_path, fake_parser):
     assert st["files"] == [str(a), str(b)]
     assert st["alerts_by_rule"] == {"SIG-SQLI": 1}
     assert st["incidents_by_severity"] == {"low": 0, "medium": 0, "high": 1, "critical": 0}
+    assert st["read_errors"] == []
     (alert,) = result.alerts
     assert alert.event_count == 2                     # one alert across both files
     assert result.generated_at.tzinfo is not None
@@ -392,3 +394,53 @@ def test_only_options_the_constructor_accepts_are_passed():
     tuned = config_from_dict({"detectors": {"enumeration": {"slow_threshold": 50}}})
     with pytest.warns(RuntimeWarning, match="slow_threshold"):
         assert "slow_threshold" not in _accepted_options("enumeration", OldEnum, tuned)
+
+
+# --- read errors (truncated .gz, I/O errors) ---
+
+def test_read_error_mid_file_keeps_events_and_is_recorded(tmp_path, monkeypatch):
+    good = write_log(tmp_path, "good.log", [line("192.0.2.1", 0, "/evil")])
+    broken = write_log(tmp_path, "broken.log.gz", [line("192.0.2.2", 1, "/evil"), line("192.0.2.2", 2)])
+
+    def parse(path, fmt="auto"):
+        events, stats = fake_parse_file(path, fmt)
+        if Path(path).name != "broken.log.gz":
+            return events, stats
+
+        def gen():
+            yield next(events)
+            raise EOFError("Compressed file ended before the end-of-stream marker was reached")
+        return gen(), stats
+
+    monkeypatch.setattr(engine, "_parse_file", parse)
+    result = run([good, broken], Config(), detectors=[Recorder()])
+    assert {i.client_ip for i in result.incidents} == {"192.0.2.1", "192.0.2.2"}
+    (err,) = result.stats["read_errors"]
+    assert err.startswith(f"{broken}: EOFError")
+
+
+def test_parser_reported_read_error_is_used(tmp_path, monkeypatch):
+    p = write_log(tmp_path, "x.log.gz", [line("192.0.2.1", 0)])
+
+    def parse(path, fmt="auto"):
+        events, stats = fake_parse_file(path, fmt)
+        stats.read_error = "x.log.gz: BadGzipFile: Not a gzipped file (b'19')"   # parser's format
+        return events, stats
+
+    monkeypatch.setattr(engine, "_parse_file", parse)
+    result = run([p], Config(), detectors=[])
+    assert result.stats["read_errors"] == [f"{p}: BadGzipFile: Not a gzipped file (b'19')"]
+
+
+def test_truncated_gzip_with_real_parser_does_not_raise(tmp_path):
+    import gzip
+    pytest.importorskip("watchtower.parsers")
+    data = gzip.compress(("\n".join(line("192.0.2.1", s) for s in range(2000)) + "\n").encode())
+    p = tmp_path / "cut.log.gz"
+    p.write_bytes(data[: len(data) // 2])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = run([p], Config(), detectors=[Recorder()])
+    (err,) = result.stats["read_errors"]
+    assert err.startswith(f"{p}: ") and "cut.log.gz: cut.log.gz" not in err
+    assert result.stats["lines_parsed"] > 0                 # what was readable still counts

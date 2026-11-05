@@ -4,7 +4,12 @@ Exit codes are designed for CI gating:
 
 - 0: no incident at or above ``--fail-on`` (default high);
 - 2: at least one incident at or above ``--fail-on``;
-- 1: the scan could not run (missing file, bad config, bad arguments).
+- 1: the scan could not run or cannot be trusted: missing file, bad config,
+  bad arguments, no parseable lines at all, more than ``--max-malformed`` of
+  the lines malformed, or a file that could not be read to the end. Input
+  problems take precedence over incidents: a scan of half a log is not a
+  clean bill of health, and a wrong ``--format`` must not pass CI as "no
+  attacks found". Reports are still written when some lines parsed.
 
 Bad arguments exit 1 rather than argparse's usual 2 so that "your command
 line is wrong" is never mistaken for "an attack was found".
@@ -51,9 +56,22 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--fail-on", choices=(*SEVERITIES, "never"), default="high",
                       help="exit 2 if any incident is at or above this severity, judged on "
                            "the full scan regardless of --min-severity (default: high)")
+    scan.add_argument("--max-malformed", type=_fraction, default=0.5, metavar="FRACTION",
+                      help="exit 1 if more than this fraction of lines is malformed "
+                           "(default: 0.5; usually means a wrong --format)")
     scan.add_argument("--top", type=int, default=10, metavar="N",
                       help="incidents shown in the terminal summary (default: 10)")
     return parser
+
+
+def _fraction(text: str) -> float:
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
+    if not 0.0 <= value <= 1.0:
+        raise argparse.ArgumentTypeError(f"must be between 0 and 1, got {text}")
+    return value
 
 
 def main(argv: Sequence[str] | None = None, stdout: TextIO | None = None) -> int:
@@ -73,11 +91,20 @@ def _scan(args: argparse.Namespace, out: TextIO) -> int:
     with warnings.catch_warnings():
         warnings.simplefilter("always")
         warnings.showwarning = _show_warning
+        # The parser also warns on a read error; input_problems() reports it
+        # once with the full path, so drop the duplicate.
+        warnings.filterwarnings("ignore", message="watchtower: stopped reading")
         try:
             result = run(args.logs, config=config, fmt=args.fmt)
-        except (FileNotFoundError, IsADirectoryError, PermissionError) as exc:
-            print(f"watchtower: {exc}", file=sys.stderr)
+        except (OSError, EOFError) as exc:   # missing/unreadable file, corrupt .gz
+            print(f"watchtower: cannot read logs: {exc.__class__.__name__}: {exc}", file=sys.stderr)
             return EXIT_ERROR
+
+    problems = input_problems(result.stats, args.max_malformed, args.fmt)
+    if result.stats.get("lines_parsed", 0) == 0:
+        for msg in problems:
+            print(f"watchtower: error: {msg}", file=sys.stderr)
+        return EXIT_ERROR
 
     shown = filter_min_severity(result, args.min_severity)
     try:
@@ -88,7 +115,36 @@ def _scan(args: argparse.Namespace, out: TextIO) -> int:
         return EXIT_ERROR
 
     out.write(format_summary(shown, top=args.top, written=written))
+    for msg in problems:
+        print(f"watchtower: error: {msg}", file=sys.stderr)
+    if problems:
+        return EXIT_ERROR
     return exit_code(result, args.fail_on)
+
+
+def input_problems(stats: dict, max_malformed: float, fmt: str = "auto") -> list[str]:
+    """Reasons the scan's input cannot be trusted; empty when it is sound.
+
+    Also prints a warning for any malformed lines, even under the limit:
+    a handful of mangled lines can be an attacker's attempt to break parsing.
+    """
+    read = stats.get("lines_read", 0)
+    parsed = stats.get("lines_parsed", 0)
+    bad = stats.get("lines_malformed", 0)
+    problems = []
+    for err in stats.get("read_errors", []) or []:
+        print(f"watchtower: warning: read error, results are partial: {_safe(err)}", file=sys.stderr)
+        problems.append(f"could not read to the end: {_safe(err)}")
+    if bad:
+        print(f"watchtower: warning: {bad} of {read} lines malformed and skipped", file=sys.stderr)
+    if parsed == 0:
+        hint = (f" (is --format {fmt} right for these files?)" if read else " (input is empty)")
+        problems.insert(0, f"no parseable log lines in {len(stats.get('files', []))} "
+                           f"file(s): {read} read, {bad} malformed{hint}")
+    elif read and bad / read > max_malformed:
+        problems.append(f"{bad / read:.0%} of lines malformed, above --max-malformed "
+                        f"{max_malformed:g}; check --format")
+    return problems
 
 
 def _show_warning(message, category, filename, lineno, file=None, line=None):

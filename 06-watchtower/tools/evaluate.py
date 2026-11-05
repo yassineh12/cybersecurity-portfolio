@@ -251,6 +251,21 @@ def evaluate(log_path: str | Path, labels_path: str | Path, config=None, *,
 # Presentation
 # --------------------------------------------------------------------------
 
+def safe_text(value: object) -> str:
+    """Replace control characters in log-derived text with '?' before printing.
+
+    Client IPs (from JSON logs or X-Forwarded-For setups), scenario names and
+    CSV headers are not trusted. An ANSI escape such as ``\x1b[2J`` would
+    otherwise clear the analyst's terminal and could paint a fake "all clear"
+    over the real result.
+    """
+    return "".join(ch if ch.isprintable() else "?" for ch in str(value))
+
+
+def _rules(rules) -> str:
+    return ", ".join(safe_text(r) for r in rules)
+
+
 def _pct(x: float) -> str:
     return f"{x * 100:5.1f}%"
 
@@ -261,7 +276,7 @@ def format_table(res: EvalResult) -> str:
     floor = res.min_severity or "low"
     lines.append(f"WATCHTOWER evaluation (incidents counted at severity >= {floor})")
     lines.append("")
-    width = max([len("Scenario")] + [len(s) for s in res.per_scenario])
+    width = max([len("Scenario")] + [len(safe_text(s)) for s in res.per_scenario])
     lines.append(f"{'Scenario':<{width}}  {'Label':<9}  {'Clients':>7}  {'Flagged':>7}  Result")
     lines.append(f"{'-' * width}  {'-' * 9}  {'-' * 7}  {'-' * 7}  {'-' * 6}")
     order = sorted(res.per_scenario.items(), key=lambda kv: (kv[1]["label"] != MALICIOUS, kv[0]))
@@ -272,7 +287,7 @@ def format_table(res: EvalResult) -> str:
             outcome = "ok" if b["detected"] == 0 else "FALSE POS"
         else:
             outcome = "mixed"
-        lines.append(f"{name:<{width}}  {b['label']:<9}  {b['clients']:>7}  {b['detected']:>7}  {outcome}")
+        lines.append(f"{safe_text(name):<{width}}  {b['label']:<9}  {b['clients']:>7}  {b['detected']:>7}  {outcome}")
     lines.append("")
     lines.append(f"TP {res.tp}   FP {res.fp}   FN {res.fn}   TN {res.tn}   (clients: {res.total})")
     lines.append(f"Precision {_pct(res.precision)}   Recall {_pct(res.recall)}   F1 {_pct(res.f1)}")
@@ -280,17 +295,18 @@ def format_table(res: EvalResult) -> str:
         lines.append("")
         lines.append("False positives (benign clients flagged):")
         for ip, scenario, rules in res.false_positives:
-            lines.append(f"  {ip:<16} {scenario:<24} rules: {', '.join(rules) or '(none)'}")
+            lines.append(f"  {safe_text(ip):<16} {safe_text(scenario):<24} "
+                         f"rules: {_rules(rules) or '(none)'}")
     if res.missed:
         lines.append("")
         lines.append("Missed (malicious clients not flagged):")
         for ip, scenario in res.missed:
-            lines.append(f"  {ip:<16} {scenario}")
+            lines.append(f"  {safe_text(ip):<16} {safe_text(scenario)}")
     if res.unlabelled_flagged:
         lines.append("")
         lines.append("Flagged but not in labels (excluded from metrics):")
         for ip, rules in res.unlabelled_flagged:
-            lines.append(f"  {ip:<16} rules: {', '.join(rules)}")
+            lines.append(f"  {safe_text(ip):<16} rules: {_rules(rules)}")
     if res.labels_skipped:
         lines.append("")
         lines.append(f"Note: {res.labels_skipped} label row(s) skipped (no IP or unknown label).")
@@ -328,13 +344,13 @@ def main(argv: list[str] | None = None, run_fn: Callable[..., ScanResult] | None
         return 2
     for path in (args.log, args.labels):
         if not Path(path).is_file():
-            print(f"error: no such file: {path}", file=sys.stderr)
+            print(f"error: no such file: {safe_text(path)}", file=sys.stderr)
             return 2
     try:
         res = evaluate(args.log, args.labels, args.config, min_severity=args.min_severity,
                        run_fn=run_fn, fmt=args.fmt)
     except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(f"error: {safe_text(exc)}", file=sys.stderr)
         return 2
     print(format_table(res))
     print()

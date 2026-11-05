@@ -281,9 +281,10 @@ def _phrase(alert: Alert) -> str:
         tool = _scanner_name(alert)
         return f"ran {_article(tool)} {tool} scan" if tool else "ran an automated scanner"
     if rule == "BEH-404-BURST":
-        return f"enumerated paths ({_count(alert.event_count, 'request')} answered 404)"
+        return f"enumerated paths ({_count(alert.event_count, 'request')} answered 404/403/410)"
     if rule == "BEH-BRUTE-FORCE":
-        return f"brute-forced a login ({_count(alert.event_count, 'failed attempt')})"
+        noun = "failed attempt" if _explicit_failures(alert) else "login attempt"
+        return f"brute-forced a login ({_count(alert.event_count, noun)})"
     if rule == "BEH-BRUTE-SUCCESS":
         return "logged in after repeated failed attempts"
     if rule == "BEH-RATE-SPIKE":
@@ -292,6 +293,17 @@ def _phrase(alert: Alert) -> str:
         return PHRASES[rule]
     title = (alert.title or rule).strip()
     return f"triggered {title[0].lower() + title[1:]}" if title else f"triggered {rule}"
+
+
+def _explicit_failures(alert: Alert) -> bool:
+    """Only call attempts "failed" when the detector saw explicit 401/403 answers.
+
+    Some apps answer a wrong password 200 with an error page, so the brute-force
+    detector may count every login POST ("status-agnostic"). Calling those
+    "failed attempts" would overstate what the log proves.
+    """
+    detail = (alert.detail or "").lower()
+    return bool(re.search(r"\b40[13]\b", detail)) and "agnostic" not in detail
 
 
 def _scanner_name(alert: Alert) -> str | None:

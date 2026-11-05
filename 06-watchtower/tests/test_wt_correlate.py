@@ -101,7 +101,8 @@ def test_success_signal_from_detail_or_evidence_alone():
 
 
 def test_brute_force_success_is_critical():
-    (inc,) = correlate([alert("BEH-BRUTE-FORCE", "high", count=40),
+    (inc,) = correlate([alert("BEH-BRUTE-FORCE", "high", count=40,
+                              detail="40 explicit 401/403 failures within 300s."),
                         alert("BEH-BRUTE-SUCCESS", "critical", minute=4)])
     assert inc.severity == "critical"
     assert inc.score == 100                       # 85 + 5 + 15, clamped
@@ -152,7 +153,7 @@ def test_summary_counts_and_unknown_rule():
     s = summarize(IP, [alert("BEH-404-BURST", "medium", count=37),
                        alert("BEH-RATE-SPIKE", "low", minute=1, count=1),
                        alert("X-NEW-RULE", "low", minute=2)])
-    assert s.startswith(f"{IP} enumerated paths (37 requests answered 404), "
+    assert s.startswith(f"{IP} enumerated paths (37 requests answered 404/403/410), "
                         f"flooded the site with one request, then triggered ")
     assert s.endswith(".")
 
@@ -193,3 +194,14 @@ def test_2xx_answer_counted_once_lone_alert_keeps_its_severity():
     l4s_200 = alert("SIG-LOG4SHELL", "critical", detail="answered with HTTP 2xx")
     assert score_alerts([l4s_200]) == 100
     assert score_alerts([sqli_200]) < score_alerts([l4s_200])
+
+
+def test_brute_force_wording_depends_on_explicit_failures():
+    agnostic = alert("BEH-BRUTE-FORCE", "high", count=12,
+                     detail="12 login POSTs within 300s (threshold 10); 0 explicit 401/403 "
+                            "failures; status-agnostic; lower confidence.")
+    plain = alert("BEH-BRUTE-FORCE", "high", count=12, detail="12 login POSTs within 300s (threshold 10).")
+    explicit = alert("BEH-BRUTE-FORCE", "high", count=12, detail="12 failed logins (401/403) within 300s.")
+    assert summarize(IP, [agnostic]) == f"{IP} brute-forced a login (12 login attempts)."
+    assert summarize(IP, [plain]) == f"{IP} brute-forced a login (12 login attempts)."
+    assert summarize(IP, [explicit]) == f"{IP} brute-forced a login (12 failed attempts)."
