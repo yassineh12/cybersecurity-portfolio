@@ -123,3 +123,60 @@ def test_parse_file_is_lazy(tmp_path):
     it, stats = parse_file(p, "combined")
     next(it)
     assert stats.lines_read == 1
+
+
+def test_huge_line_rejected_fast(tmp_path):
+    import time
+    p = tmp_path / "big.log"
+    p.write_text('1.2.3.4 - - [10/Oct/2000:13:55:36 +0000] "GET /' + "a" * 20_000_000 + '\n' + COMBINED + "\n")
+    t = time.time()
+    it, stats = parse_file(p)
+    events = list(it)
+    assert time.time() - t < 1
+    assert len(events) == 1 and stats.lines_malformed == 1
+
+
+def test_sample_log_counts_unchanged():
+    p = Path(__file__).resolve().parents[1] / "examples" / "sample_access.log"
+    if not p.exists():
+        import pytest
+        pytest.skip("sample log not generated")
+    it, stats = parse_file(p)
+    list(it)
+    assert stats.lines_parsed == 2159 and stats.lines_malformed == 0
+
+
+def test_truncated_gzip(tmp_path):
+    import pytest
+    p = tmp_path / "t.log.gz"
+    data = gzip.compress(("\n".join(f'1.2.3.4 - - [10/Oct/2000:13:55:36 +0000] "GET /{i} HTTP/1.1" 200 5 "-" "-"' for i in range(5000)) + "\n").encode())
+    p.write_bytes(data[: len(data) // 2])
+    it, stats = parse_file(p)
+    with pytest.warns(RuntimeWarning):
+        events = list(it)
+    assert 0 < len(events) < 5000 and stats.read_error
+
+
+def test_non_gzip_gz(tmp_path):
+    import pytest
+    p = tmp_path / "x.log.gz"
+    p.write_text("this is plain text\n")
+    it, stats = parse_file(p)
+    with pytest.warns(RuntimeWarning):
+        assert list(it) == []
+    assert stats.read_error
+
+
+def test_non_ip_clients_malformed():
+    for c in ("<script>alert(1)</script>", "\x1b[31mred", "[x](http://e)", "host.example.com"):
+        line = f'{c.replace(" ", "")} - - [10/Oct/2000:13:55:36 +0000] "GET / HTTP/1.1" 200 5 "-" "-"'
+        assert parse_line(line) is None
+        js = json.dumps({"time": "2024-05-01T00:00:00Z", "remote_addr": c, "request": "GET / HTTP/1.1"})
+        assert parse_line(js) is None
+
+
+def test_bracketed_ipv6_and_zone():
+    e = parse_line('[2001:db8::1] - - [10/Oct/2000:13:55:36 +0000] "GET / HTTP/1.1" 200 5 "-" "-"')
+    assert e.client_ip == "2001:db8::1"
+    js = json.dumps({"time": "2024-05-01T00:00:00Z", "remote_addr": "fe80::1%eth0", "request": "GET / HTTP/1.1"})
+    assert parse_line(js).client_ip == "fe80::1"

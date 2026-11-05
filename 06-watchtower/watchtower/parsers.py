@@ -11,8 +11,10 @@ rather than crashing the pipeline.
 from __future__ import annotations
 
 import gzip
+import ipaddress
 import json
 import re
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,7 +23,7 @@ from urllib.parse import unquote
 
 from .models import LogEvent
 
-_Q = r'"((?:[^"\\]|\\.)*)"'  # quoted field allowing backslash-escaped chars
+_Q = r'"((?:[^"\\]++|\\.)*+)"'  # quoted field allowing backslash-escaped chars
 _COMMON = re.compile(
     r'^(?P<ip>\S+) \S+ \S+ \[(?P<time>[^\]]+)\] ' + _Q.replace("(", "(?P<request>", 1)
     + r' (?P<status>\d{3}|-) (?P<bytes>\d+|-)\s*$'
@@ -32,6 +34,8 @@ _COMBINED = re.compile(
     + r' ' + _Q.replace("(", "(?P<referrer>", 1)
     + r' ' + _Q.replace("(", "(?P<agent>", 1) + r'(?:\s.*)?\s*$'
 )
+# Lines longer than this are scanner junk or a DoS attempt on the parser.
+MAX_LINE_BYTES = 65536
 _TIME_FORMAT = "%d/%b/%Y:%H:%M:%S %z"
 _FORMATS = ("auto", "combined", "common", "jsonl")
 
@@ -41,6 +45,7 @@ class ParseStats:
     lines_read: int = 0
     lines_parsed: int = 0
     lines_malformed: int = 0
+    read_error: str = ""   # set when a file was cut short (corrupt/truncated gzip, bad bytes)
 
 
 def _unescape(s: str) -> str:
@@ -69,6 +74,26 @@ def _split_request(request: str) -> tuple[str, str, str]:
     return parts[0].upper(), unquote(path), query
 
 
+def _clean_ip(value) -> str | None:
+    """Return a canonical client IP or None.
+
+    The client string flows into reports and the terminal, and in JSON logs
+    the attacker controls it: markup or ANSI escapes there would attack the
+    analyst. Anything that is not a literal IP is rejected. (Servers logging
+    hostnames via HostnameLookups On must turn that off.)
+    """
+    if not isinstance(value, str):
+        return None
+    v = value.strip()
+    if v.startswith("[") and v.endswith("]"):
+        v = v[1:-1]
+    v = v.split("%", 1)[0]
+    try:
+        return str(ipaddress.ip_address(v))
+    except ValueError:
+        return None
+
+
 def _int(s, default: int = 0) -> int:
     try:
         return int(s)
@@ -81,9 +106,12 @@ def _from_regex(m: re.Match, combined: bool, source: str, line_no: int, raw: str
         ts = _to_utc(datetime.strptime(m["time"], _TIME_FORMAT))
     except ValueError:
         return None
+    ip = _clean_ip(m["ip"])
+    if ip is None:
+        return None
     method, path, query = _split_request(_unescape(m["request"]))
     return LogEvent(
-        timestamp=ts, client_ip=m["ip"], method=method, path=path, query=query,
+        timestamp=ts, client_ip=ip, method=method, path=path, query=query,
         status=_int(m["status"]), bytes_sent=_int(m["bytes"]),
         referrer=_dash(_unescape(m["referrer"])) if combined else "",
         user_agent=_dash(_unescape(m["agent"])) if combined else "",
@@ -117,8 +145,8 @@ def _from_json(raw: str, source: str, line_no: int) -> LogEvent | None:
     if not isinstance(rec, dict):
         return None
     ts = _parse_json_time(rec)
-    ip = rec.get("remote_addr")
-    if ts is None or not ip:
+    ip = _clean_ip(rec.get("remote_addr"))
+    if ts is None or ip is None:
         return None
     request = rec.get("request")
     if isinstance(request, str):
@@ -131,7 +159,7 @@ def _from_json(raw: str, source: str, line_no: int) -> LogEvent | None:
     else:
         method, path, query = "-", "", ""
     return LogEvent(
-        timestamp=ts, client_ip=str(ip), method=method, path=path, query=query,
+        timestamp=ts, client_ip=ip, method=method, path=path, query=query,
         status=_int(rec.get("status")), bytes_sent=_int(rec.get("body_bytes_sent")),
         referrer=_dash(str(rec.get("http_referer") or "")),
         user_agent=_dash(str(rec.get("http_user_agent") or "")),
@@ -142,6 +170,8 @@ def _from_json(raw: str, source: str, line_no: int) -> LogEvent | None:
 def parse_line(line: str, fmt: str = "auto", source: str = "", line_no: int = 0) -> LogEvent | None:
     """Parse one line; return None (never raise) if it does not fit the format."""
     try:
+        if len(line) > MAX_LINE_BYTES:
+            return None
         raw = line.rstrip("\r\n")
         text = raw.strip()
         if not text:
@@ -174,16 +204,20 @@ def parse_file(path: str | Path, fmt: str = "auto") -> tuple[Iterator[LogEvent],
     stats = ParseStats()
 
     def gen() -> Iterator[LogEvent]:
-        with _open_text(path) as fh:
-            for n, line in enumerate(fh, 1):
-                if not line.strip():
-                    continue
-                stats.lines_read += 1
-                ev = parse_line(line, fmt, path.name, n)
-                if ev is None:
-                    stats.lines_malformed += 1
-                else:
-                    stats.lines_parsed += 1
-                    yield ev
+        try:
+            with _open_text(path) as fh:
+                for n, line in enumerate(fh, 1):
+                    if not line.strip():
+                        continue
+                    stats.lines_read += 1
+                    ev = parse_line(line, fmt, path.name, n)
+                    if ev is None:
+                        stats.lines_malformed += 1
+                    else:
+                        stats.lines_parsed += 1
+                        yield ev
+        except (OSError, EOFError, UnicodeError) as exc:
+            stats.read_error = f"{path.name}: {type(exc).__name__}: {exc}"[:200]
+            warnings.warn(f"watchtower: stopped reading {stats.read_error}", RuntimeWarning)
 
     return gen(), stats
