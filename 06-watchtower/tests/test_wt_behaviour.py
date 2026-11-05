@@ -173,9 +173,24 @@ def test_status_agnostic_wordpress_200_brute_force():
     assert "status-agnostic; lower confidence" in alerts[0].detail
 
 
-def test_status_agnostic_302_no_success_alert():
-    alerts = run(BruteForceDetector(10, 300), [post(i, 302) for i in range(12)])
-    assert [a.rule_id for a in alerts] == ["BEH-BRUTE-FORCE"]
+def test_login_monitor_302_raises_nothing():
+    evs = [post(i * 30, 302, path="/login") for i in range(20)]  # 10 minutes
+    assert run(BruteForceDetector(10, 300), evs) == []
+
+
+def test_other_2xx_not_counted():
+    assert run(BruteForceDetector(10, 300), [post(i, 201) for i in range(30)]) == []
+
+
+def test_status_agnostic_200_is_medium():
+    alerts = run(BruteForceDetector(10, 300), [post(i, 200) for i in range(60)])
+    assert [(a.rule_id, a.severity) for a in alerts] == [("BEH-BRUTE-FORCE", "medium")]
+    assert "status-agnostic; lower confidence" in alerts[0].detail
+
+
+def test_explicit_401_is_high():
+    alerts = run(BruteForceDetector(10, 300), [post(i, 401) for i in range(10)])
+    assert alerts[0].severity == "high"
 
 
 def test_explicit_failures_not_flagged_lower_confidence():
@@ -225,3 +240,52 @@ def test_enum_stray_404_later_does_not_extend():
 def test_constructor_signatures():
     d = EnumerationDetector(slow_threshold=5, slow_window_seconds=10)
     assert (d.threshold, d.slow_threshold) == (20, 5)
+
+
+def bounce(n, gap=20, status=302, tail="/login?error=1"):
+    evs = []
+    for i in range(n):
+        evs.append(post(i * gap, status, path="/login"))
+        evs.append(ev(i * gap + 1, method="GET", path=tail, status=200))
+    return evs
+
+
+def test_302_bounce_back_to_login_is_medium_brute_force():
+    evs = bounce(15)
+    alerts = run(BruteForceDetector(10, 600), evs)
+    assert [(a.rule_id, a.severity) for a in alerts] == [("BEH-BRUTE-FORCE", "medium")]
+    assert "302 redirects back to the login page counted as failures" in alerts[0].detail
+
+
+def test_302_then_dashboard_is_quiet():
+    evs = []
+    for i in range(20):
+        evs += [post(i * 30, 302, path="/login"),
+                ev(i * 30 + 1, method="GET", path="/dashboard", status=200)]
+    assert run(BruteForceDetector(10, 600), evs) == []
+
+
+def test_302_alone_is_quiet_and_flush_not_failure():
+    assert run(BruteForceDetector(10, 600),
+               [post(i * 30, 302, path="/login") for i in range(20)]) == []
+    det = BruteForceDetector(1, 600)
+    det.feed(post(0, 302, path="/login"))
+    assert det.flush() == []
+
+
+def test_302_bounce_too_slow_not_failure():
+    evs = []
+    for i in range(15):
+        evs += [post(i * 60, 302, path="/login"),
+                ev(i * 60 + 11, method="GET", path="/login", status=200)]
+    assert run(BruteForceDetector(10, 900), evs) == []
+
+
+def test_303_bounce_counts():
+    assert len(run(BruteForceDetector(10, 600), bounce(12, status=303))) == 1
+
+
+def test_302_rapid_repost_counts_as_failures():
+    evs = [post(i * 3, 302, path="/login") for i in range(15)]
+    alerts = run(BruteForceDetector(10, 300), evs)
+    assert [(a.rule_id, a.severity) for a in alerts] == [("BEH-BRUTE-FORCE", "medium")]

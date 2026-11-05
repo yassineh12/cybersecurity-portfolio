@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from watchtower.models import Alert, LogEvent
 
 MAX_EVIDENCE = 5
+BOUNCE_SECONDS = 10  # max gap between a 302 login POST and the GET back to the form
 _SWEEP_EVERY = 1024  # events between idle-client sweeps
 
 
@@ -238,8 +239,10 @@ class BruteForceDetector(_WindowDetector):
     Attacker behaviour: password guessing or credential stuffing sends many
     POSTs to a login endpoint. Well-behaved apps answer failures 401/403, but
     WordPress answers a failed login 200 and many apps redirect (302) back to
-    the form, so the volume of POSTs to login paths is counted whatever the
-    status (flagged "status-agnostic; lower confidence" when the failures
+    the form. So when explicit failures are absent, POSTs answered 200 count
+    toward volume (302/303 and other 2xx are normal successes and do not, so
+    a login monitor that logs in every 30s stays quiet), at medium severity
+    (flagged "status-agnostic; lower confidence" when the failures
     were not explicit 401/403). If the client then gets a 2xx or 302 after
     explicit failures, the guessing probably worked, which is worse than the
     guessing itself, hence the separate critical rule. A success is not
@@ -267,8 +270,36 @@ class BruteForceDetector(_WindowDetector):
         self.threshold = self._posts.threshold
         self.login_paths = tuple(login_paths)
         self._totals: dict[str, int] = {}   # explicit failures seen, per alerted client
+        self._pending: dict[str, LogEvent] = {}   # 302/303 login POSTs awaiting the next request
+        self._inferred: set[str] = set()          # clients with redirect-bounce failures
+
+    def _tick(self, now: datetime) -> None:
+        super()._tick(now)
+        if self._seen % _SWEEP_EVERY == 0:
+            self._pending = {ip: p for ip, p in self._pending.items()
+                             if abs((now - p.timestamp).total_seconds()) <= BOUNCE_SECONDS}
+            self._inferred &= set(self._posts.wins)
+
+    @staticmethod
+    def _base(path: str) -> str:
+        return normalise_path(path).split("?", 1)[0].rstrip("/") or "/"
+
+    def _resolve_pending(self, event: LogEvent) -> None:
+        """A 302/303 login POST is a failure only if the same client's very
+        next request is a GET of the same login page, or another POST to it
+        (an immediate retry: nobody re-submits a login that just succeeded),
+        within BOUNCE_SECONDS. A slow monitor re-posting every 30s is not."""
+        pend = self._pending.pop(event.client_ip, None)
+        if (pend is None or event.method not in ("GET", "POST")
+                or self._base(event.path) != self._base(pend.path)
+                or not is_login_path(event.path, self.login_paths)
+                or (event.timestamp - pend.timestamp).total_seconds() > BOUNCE_SECONDS):
+            return
+        self._inferred.add(event.client_ip)
+        self._count_post(pend, explicit=False)
 
     def _feed(self, event: LogEvent) -> None:
+        self._resolve_pending(event)
         if event.method != "POST" or not is_login_path(event.path, self.login_paths):
             return
         self._tick(event.timestamp)
@@ -277,15 +308,27 @@ class BruteForceDetector(_WindowDetector):
         success = 200 <= status < 300 or status == 302
         if success:
             self._maybe_success(event)
+        if status in (302, 303):
+            self._pending[event.client_ip] = event
+            return
+        if not (explicit or status == 200):
+            return  # other 2xx are normal successes, not volume
+        self._count_post(event, explicit)
+
+    def _count_post(self, event: LogEvent, explicit: bool) -> None:
         pw = self._posts.add(event)
         if explicit:
             self._fails.add(event)
         key = (event.client_ip, "BEH-BRUTE-FORCE")
         alert = self._alerts.get(key)
+        note = "302 redirects back to the login page counted as failures"
         if alert is not None:
             self._extend(alert, event)
             if explicit:
                 self._totals[event.client_ip] = self._totals.get(event.client_ip, 0) + 1
+                alert.severity = "high"  # explicit failures confirm the guessing
+            if event.client_ip in self._inferred and note not in alert.detail:
+                alert.detail += " " + note + "."
             return
         if not self._posts.hit(pw):
             return
@@ -295,9 +338,12 @@ class BruteForceDetector(_WindowDetector):
         detail = f"{n} login POSTs within {self._posts.seconds}s (threshold {self.threshold})"
         if nfail < self.threshold:
             detail += f"; {nfail} explicit 401/403 failures; status-agnostic; lower confidence"
+        if event.client_ip in self._inferred:
+            detail += "; " + note
         self._totals[event.client_ip] = nfail
         self._alerts[key] = Alert(
-            rule_id="BEH-BRUTE-FORCE", title="Login brute force", severity="high",
+            rule_id="BEH-BRUTE-FORCE", title="Login brute force",
+            severity="high" if nfail else "medium",
             client_ip=event.client_ip, first_seen=pw.times[0], last_seen=event.timestamp,
             event_count=n, technique="T1110", evidence=list(pw.evidence),
             detail=detail + ".")
@@ -328,4 +374,6 @@ class BruteForceDetector(_WindowDetector):
 
     def flush(self) -> list[Alert]:
         self._totals = {}
+        self._pending = {}  # unresolved 302s are not failures
+        self._inferred = set()
         return super().flush()
