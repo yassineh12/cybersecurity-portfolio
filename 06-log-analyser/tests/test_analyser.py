@@ -6,6 +6,9 @@ from analyser import (
     detect_brute_force,
     detect_scanner_agents,
     detect_sensitive_probing,
+    detect_high_error_rate,
+    is_internal_ip,
+    compute_temporal,
     LogEntry,
 )
 
@@ -98,3 +101,84 @@ def test_normal_traffic_no_alerts():
         + detect_scanner_agents({"192.168.1.1": [entry]})
     )
     assert len(all_alerts) == 0
+
+
+def test_internal_ip_rfc1918():
+    assert is_internal_ip("10.0.0.1") is True
+    assert is_internal_ip("192.168.1.100") is True
+    assert is_internal_ip("172.16.0.5") is True
+    assert is_internal_ip("172.31.255.255") is True
+    assert is_internal_ip("127.0.0.1") is True
+
+
+def test_external_ip():
+    assert is_internal_ip("8.8.8.8") is False
+    assert is_internal_ip("203.0.113.1") is False
+    assert is_internal_ip("172.32.0.1") is False
+
+
+def test_custom_brute_threshold():
+    entries = [LogEntry(
+        ip="10.0.0.5", timestamp="", method="POST",
+        path="/login", status=401, size=0,
+        referer="", user_agent="Mozilla/5.0", raw=""
+    ) for _ in range(5)]
+    alerts_default = detect_brute_force({"10.0.0.5": entries}, threshold=10)
+    assert len(alerts_default) == 0
+    alerts_low = detect_brute_force({"10.0.0.5": entries}, threshold=3)
+    assert any(a.rule_id == "brute-force" for a in alerts_low)
+
+
+def test_custom_scan_threshold():
+    entries = [LogEntry(
+        ip="10.0.0.5", timestamp="", method="GET",
+        path=f"/path{i}", status=404, size=0,
+        referer="", user_agent="Mozilla/5.0", raw=""
+    ) for i in range(30)]
+    alerts_default = detect_high_error_rate({"10.0.0.5": entries}, threshold=50)
+    assert len(alerts_default) == 0
+    alerts_low = detect_high_error_rate({"10.0.0.5": entries}, threshold=20)
+    assert any(a.rule_id == "directory-scan" for a in alerts_low)
+
+
+def test_mitre_mapping_on_alerts():
+    entry = parse_line(SCANNER_LINE)
+    alerts = detect_scanner_agents({"10.0.0.5": [entry]})
+    scanner_alert = [a for a in alerts if a.rule_id == "scanner-agent"]
+    assert scanner_alert
+    assert scanner_alert[0].mitre_technique == "T1595.002"
+    assert scanner_alert[0].mitre_tactic == "Reconnaissance"
+
+
+def test_mitre_mapping_sqli():
+    entry = parse_line(SQLI_LINE)
+    alerts = detect_sqli({"10.0.0.5": [entry]})
+    sqli = [a for a in alerts if a.rule_id == "sqli-attempt"]
+    assert sqli
+    assert sqli[0].mitre_technique == "T1190"
+
+
+def test_temporal_analysis():
+    entries = [
+        LogEntry(ip="1.2.3.4", timestamp="03/Nov/2026:10:15:32 +0000",
+                 method="GET", path="/", status=200, size=100,
+                 referer="", user_agent="", raw=""),
+        LogEntry(ip="1.2.3.4", timestamp="03/Nov/2026:10:45:00 +0000",
+                 method="GET", path="/a", status=200, size=100,
+                 referer="", user_agent="", raw=""),
+        LogEntry(ip="1.2.3.4", timestamp="03/Nov/2026:11:00:00 +0000",
+                 method="GET", path="/b", status=200, size=100,
+                 referer="", user_agent="", raw=""),
+    ]
+    hourly = compute_temporal({"1.2.3.4": entries})
+    assert hourly.get("2026-11-03 10:00") == 2
+    assert hourly.get("2026-11-03 11:00") == 1
+
+
+def test_empty_log_no_alerts():
+    entries_by_ip: dict[str, list[LogEntry]] = {}
+    assert detect_sqli(entries_by_ip) == []
+    assert detect_xss(entries_by_ip) == []
+    assert detect_brute_force(entries_by_ip) == []
+    assert detect_scanner_agents(entries_by_ip) == []
+    assert detect_traversal(entries_by_ip) == []

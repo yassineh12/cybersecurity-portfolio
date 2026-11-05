@@ -10,19 +10,43 @@ logs into this analyser and watch it catch you.
 Usage:
     python analyser.py access.log --out incident-report
     python analyser.py access.log --top 20
+    python analyser.py access.log --threshold-brute 5 --threshold-scan 30
 
 Only analyse logs from systems you own or are authorised to investigate.
 """
 
 from __future__ import annotations
 
+__version__ = "1.1.0"
+
 import argparse
 import json
+import logging
 import re
+import time
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Iterator
+
+log = logging.getLogger(__name__)
+
+MITRE_MAPPING = {
+    "scanner-agent": {"technique": "T1595.002", "tactic": "Reconnaissance", "name": "Active Scanning: Vulnerability Scanning"},
+    "brute-force": {"technique": "T1110", "tactic": "Credential Access", "name": "Brute Force"},
+    "sqli-attempt": {"technique": "T1190", "tactic": "Initial Access", "name": "Exploit Public-Facing Application"},
+    "xss-attempt": {"technique": "T1189", "tactic": "Initial Access", "name": "Drive-by Compromise"},
+    "path-traversal": {"technique": "T1083", "tactic": "Discovery", "name": "File and Directory Discovery"},
+    "sensitive-probing": {"technique": "T1083", "tactic": "Discovery", "name": "File and Directory Discovery"},
+    "directory-scan": {"technique": "T1595.003", "tactic": "Reconnaissance", "name": "Active Scanning: Wordlist Scanning"},
+}
+
+RFC1918_PATTERNS = [
+    re.compile(r"^10\."),
+    re.compile(r"^172\.(1[6-9]|2\d|3[01])\."),
+    re.compile(r"^192\.168\."),
+    re.compile(r"^127\."),
+]
 
 
 @dataclass
@@ -47,6 +71,8 @@ class Alert:
     source_ip: str
     sample_paths: list[str] = field(default_factory=list)
     count: int = 0
+    mitre_technique: str = ""
+    mitre_tactic: str = ""
 
 
 @dataclass
@@ -60,9 +86,12 @@ class AnalysisResult:
     top_paths: list[tuple[str, int]] = field(default_factory=list)
     status_distribution: dict[str, int] = field(default_factory=dict)
     scanner_user_agents: list[str] = field(default_factory=list)
+    elapsed_seconds: float = 0.0
+    time_window: dict[str, str] = field(default_factory=dict)
+    internal_ips: list[str] = field(default_factory=list)
+    requests_per_hour: dict[str, int] = field(default_factory=dict)
 
 
-# Combined log format regex
 LOG_PATTERN = re.compile(
     r'(\S+)\s+'            # IP
     r'\S+\s+'              # ident
@@ -132,6 +161,17 @@ SENSITIVE_PATHS = [
 ]
 
 
+def is_internal_ip(ip: str) -> bool:
+    return any(p.match(ip) for p in RFC1918_PATTERNS)
+
+
+def parse_timestamp(ts: str) -> datetime | None:
+    try:
+        return datetime.strptime(ts.split()[0], "%d/%b/%Y:%H:%M:%S")
+    except (ValueError, IndexError):
+        return None
+
+
 def parse_line(line: str) -> LogEntry | None:
     m = LOG_PATTERN.match(line.strip())
     if not m:
@@ -157,6 +197,13 @@ def parse_log(filepath: str) -> Iterator[LogEntry]:
                 yield entry
 
 
+def attach_mitre(alert: Alert) -> None:
+    mapping = MITRE_MAPPING.get(alert.rule_id)
+    if mapping:
+        alert.mitre_technique = mapping["technique"]
+        alert.mitre_tactic = mapping["tactic"]
+
+
 def detect_scanner_agents(entries_by_ip: dict[str, list[LogEntry]]) -> list[Alert]:
     alerts = []
     for ip, entries in entries_by_ip.items():
@@ -164,7 +211,7 @@ def detect_scanner_agents(entries_by_ip: dict[str, list[LogEntry]]) -> list[Aler
         for agent in agents:
             for pattern in SCANNER_AGENTS:
                 if pattern.search(agent):
-                    alerts.append(Alert(
+                    a = Alert(
                         rule_id="scanner-agent",
                         severity="high",
                         title=f"Known scanner user-agent from {ip}",
@@ -172,7 +219,9 @@ def detect_scanner_agents(entries_by_ip: dict[str, list[LogEntry]]) -> list[Aler
                         source_ip=ip,
                         sample_paths=[e.path for e in entries[:5]],
                         count=len(entries),
-                    ))
+                    )
+                    attach_mitre(a)
+                    alerts.append(a)
                     break
     return alerts
 
@@ -187,7 +236,7 @@ def detect_brute_force(entries_by_ip: dict[str, list[LogEntry]],
                           and e.method == "POST"]
         failed = [e for e in login_attempts if e.status in (401, 403)]
         if len(failed) >= threshold:
-            alerts.append(Alert(
+            a = Alert(
                 rule_id="brute-force",
                 severity="critical",
                 title=f"Possible brute-force from {ip} ({len(failed)} failed logins)",
@@ -195,7 +244,9 @@ def detect_brute_force(entries_by_ip: dict[str, list[LogEntry]],
                 source_ip=ip,
                 sample_paths=list({e.path for e in failed})[:5],
                 count=len(failed),
-            ))
+            )
+            attach_mitre(a)
+            alerts.append(a)
     return alerts
 
 
@@ -208,7 +259,7 @@ def detect_sqli(entries_by_ip: dict[str, list[LogEntry]]) -> list[Alert]:
             if any(p.search(decoded) for p in SQLI_PATTERNS):
                 sqli_hits.append(e)
         if sqli_hits:
-            alerts.append(Alert(
+            a = Alert(
                 rule_id="sqli-attempt",
                 severity="critical",
                 title=f"SQL injection attempt from {ip}",
@@ -216,7 +267,9 @@ def detect_sqli(entries_by_ip: dict[str, list[LogEntry]]) -> list[Alert]:
                 source_ip=ip,
                 sample_paths=[e.path for e in sqli_hits[:5]],
                 count=len(sqli_hits),
-            ))
+            )
+            attach_mitre(a)
+            alerts.append(a)
     return alerts
 
 
@@ -229,7 +282,7 @@ def detect_xss(entries_by_ip: dict[str, list[LogEntry]]) -> list[Alert]:
             if any(p.search(decoded) for p in XSS_PATTERNS):
                 xss_hits.append(e)
         if xss_hits:
-            alerts.append(Alert(
+            a = Alert(
                 rule_id="xss-attempt",
                 severity="high",
                 title=f"XSS attempt from {ip}",
@@ -237,7 +290,9 @@ def detect_xss(entries_by_ip: dict[str, list[LogEntry]]) -> list[Alert]:
                 source_ip=ip,
                 sample_paths=[e.path for e in xss_hits[:5]],
                 count=len(xss_hits),
-            ))
+            )
+            attach_mitre(a)
+            alerts.append(a)
     return alerts
 
 
@@ -246,7 +301,7 @@ def detect_traversal(entries_by_ip: dict[str, list[LogEntry]]) -> list[Alert]:
     for ip, entries in entries_by_ip.items():
         hits = [e for e in entries if any(p.search(e.path) for p in TRAVERSAL_PATTERNS)]
         if hits:
-            alerts.append(Alert(
+            a = Alert(
                 rule_id="path-traversal",
                 severity="high",
                 title=f"Path traversal attempt from {ip}",
@@ -254,7 +309,9 @@ def detect_traversal(entries_by_ip: dict[str, list[LogEntry]]) -> list[Alert]:
                 source_ip=ip,
                 sample_paths=[e.path for e in hits[:5]],
                 count=len(hits),
-            ))
+            )
+            attach_mitre(a)
+            alerts.append(a)
     return alerts
 
 
@@ -271,7 +328,7 @@ def detect_sensitive_probing(entries_by_ip: dict[str, list[LogEntry]],
                     probe_entries.append(e)
                     break
         if len(probes) >= threshold:
-            alerts.append(Alert(
+            a = Alert(
                 rule_id="sensitive-probing",
                 severity="medium",
                 title=f"Sensitive path probing from {ip} ({len(probes)} unique paths)",
@@ -279,7 +336,9 @@ def detect_sensitive_probing(entries_by_ip: dict[str, list[LogEntry]],
                 source_ip=ip,
                 sample_paths=sorted(probes)[:5],
                 count=len(probe_entries),
-            ))
+            )
+            attach_mitre(a)
+            alerts.append(a)
     return alerts
 
 
@@ -289,7 +348,7 @@ def detect_high_error_rate(entries_by_ip: dict[str, list[LogEntry]],
     for ip, entries in entries_by_ip.items():
         errors_404 = [e for e in entries if e.status == 404]
         if len(errors_404) >= threshold:
-            alerts.append(Alert(
+            a = Alert(
                 rule_id="directory-scan",
                 severity="medium",
                 title=f"Possible directory scan from {ip} ({len(errors_404)} 404s)",
@@ -297,19 +356,36 @@ def detect_high_error_rate(entries_by_ip: dict[str, list[LogEntry]],
                 source_ip=ip,
                 sample_paths=[e.path for e in errors_404[:5]],
                 count=len(errors_404),
-            ))
+            )
+            attach_mitre(a)
+            alerts.append(a)
     return alerts
 
 
-def analyse(filepath: str, top_n: int = 10) -> AnalysisResult:
+def compute_temporal(entries_by_ip: dict[str, list[LogEntry]]) -> dict[str, int]:
+    hour_counts: dict[str, int] = Counter()
+    for entries in entries_by_ip.values():
+        for e in entries:
+            dt = parse_timestamp(e.timestamp)
+            if dt:
+                hour_key = dt.strftime("%Y-%m-%d %H:00")
+                hour_counts[hour_key] += 1
+    return dict(sorted(hour_counts.items()))
+
+
+def analyse(filepath: str, top_n: int = 10,
+            brute_threshold: int = 10,
+            scan_threshold: int = 50) -> AnalysisResult:
+    t0 = time.monotonic()
     result = AnalysisResult(log_file=filepath)
     entries_by_ip: dict[str, list[LogEntry]] = defaultdict(list)
     ip_counter = Counter()
     path_counter = Counter()
     status_counter = Counter()
     all_agents = set()
+    timestamps = []
 
-    print(f"[1/2] Parsing {filepath} ...")
+    log.info("Parsing %s ...", filepath)
     total = 0
     with open(filepath) as fh:
         for line in fh:
@@ -321,6 +397,9 @@ def analyse(filepath: str, top_n: int = 10) -> AnalysisResult:
                 path_counter[entry.path] += 1
                 status_counter[entry.status] += 1
                 all_agents.add(entry.user_agent)
+                dt = parse_timestamp(entry.timestamp)
+                if dt:
+                    timestamps.append(dt)
 
     result.total_lines = total
     result.parsed_lines = sum(ip_counter.values())
@@ -329,26 +408,37 @@ def analyse(filepath: str, top_n: int = 10) -> AnalysisResult:
     result.top_paths = path_counter.most_common(top_n)
     result.status_distribution = {str(k): v for k, v in status_counter.most_common()}
 
+    if timestamps:
+        result.time_window = {
+            "first": min(timestamps).isoformat(),
+            "last": max(timestamps).isoformat(),
+        }
+
+    result.internal_ips = sorted({ip for ip in entries_by_ip if is_internal_ip(ip)})
+
     result.scanner_user_agents = [
         ua for ua in all_agents
         if any(p.search(ua) for p in SCANNER_AGENTS)
     ]
 
-    print(f"  {result.parsed_lines} entries from {result.unique_ips} unique IPs")
+    result.requests_per_hour = compute_temporal(entries_by_ip)
 
-    print("[2/2] Running detection rules ...")
+    log.info("%d entries from %d unique IPs", result.parsed_lines, result.unique_ips)
+
+    log.info("Running detection rules ...")
     result.alerts += detect_scanner_agents(entries_by_ip)
-    result.alerts += detect_brute_force(entries_by_ip)
+    result.alerts += detect_brute_force(entries_by_ip, threshold=brute_threshold)
     result.alerts += detect_sqli(entries_by_ip)
     result.alerts += detect_xss(entries_by_ip)
     result.alerts += detect_traversal(entries_by_ip)
     result.alerts += detect_sensitive_probing(entries_by_ip)
-    result.alerts += detect_high_error_rate(entries_by_ip)
+    result.alerts += detect_high_error_rate(entries_by_ip, threshold=scan_threshold)
 
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     result.alerts.sort(key=lambda a: (severity_order.get(a.severity, 9), -a.count))
 
-    print(f"  {len(result.alerts)} alerts generated.")
+    result.elapsed_seconds = round(time.monotonic() - t0, 2)
+    log.info("%d alerts generated (%.1fs).", len(result.alerts), result.elapsed_seconds)
     return result
 
 
@@ -359,20 +449,34 @@ def to_markdown(result: AnalysisResult) -> str:
         f"**Total log entries:** {result.parsed_lines} (of {result.total_lines} lines)",
         f"**Unique source IPs:** {result.unique_ips}",
         f"**Alerts raised:** {len(result.alerts)}",
+        f"**Elapsed:** {result.elapsed_seconds}s",
         "",
     ]
 
+    if result.time_window:
+        lines.append(f"**Time window:** {result.time_window.get('first', '?')} — {result.time_window.get('last', '?')}")
+        lines.append("")
+
+    if result.internal_ips:
+        lines += ["## Internal (RFC 1918) Source IPs", ""]
+        for ip in result.internal_ips:
+            lines.append(f"- {ip}")
+        lines.append("")
+
     if result.alerts:
         lines += ["## Alerts", "",
-                   "| Severity | Type | Source IP | Count |",
-                   "|---|---|---|---|"]
+                   "| Severity | Type | Source IP | Count | MITRE |",
+                   "|---|---|---|---|---|"]
         for a in result.alerts:
-            lines.append(f"| {a.severity.upper()} | {a.title[:50]} | {a.source_ip} | {a.count} |")
+            mitre = a.mitre_technique or "-"
+            lines.append(f"| {a.severity.upper()} | {a.title[:50]} | {a.source_ip} | {a.count} | {mitre} |")
 
         lines += ["", "### Alert Details", ""]
         for a in result.alerts:
             lines.append(f"#### [{a.severity.upper()}] {a.title}")
             lines.append(f"- Rule: `{a.rule_id}`")
+            if a.mitre_technique:
+                lines.append(f"- MITRE ATT&CK: {a.mitre_technique} ({a.mitre_tactic})")
             lines.append(f"- Evidence: {a.detail}")
             if a.sample_paths:
                 lines.append("- Sample paths:")
@@ -400,6 +504,13 @@ def to_markdown(result: AnalysisResult) -> str:
             lines.append(f"- `{ua}`")
         lines.append("")
 
+    if result.requests_per_hour:
+        lines += ["## Requests per Hour", "",
+                   "| Hour | Count |", "|---|---|"]
+        for hour, count in result.requests_per_hour.items():
+            lines.append(f"| {hour} | {count} |")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -407,11 +518,28 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("logfile", help="path to access.log (combined format)")
-    ap.add_argument("--out", default="incident-report")
-    ap.add_argument("--top", type=int, default=10, help="top-N for IPs and paths")
+    ap.add_argument("--out", default="incident-report",
+                    help="output file prefix")
+    ap.add_argument("--top", type=int, default=10,
+                    help="top-N for IPs and paths")
+    ap.add_argument("--threshold-brute", type=int, default=10,
+                    help="failed-login count before brute-force alert")
+    ap.add_argument("--threshold-scan", type=int, default=50,
+                    help="404 count before directory-scan alert")
+    ap.add_argument("--verbose", "-v", action="store_true",
+                    help="debug-level output")
+    ap.add_argument("--quiet", "-q", action="store_true",
+                    help="errors only")
+    ap.add_argument("--version", action="version",
+                    version=f"%(prog)s {__version__}")
     args = ap.parse_args()
 
-    result = analyse(args.logfile, top_n=args.top)
+    level = logging.DEBUG if args.verbose else (logging.ERROR if args.quiet else logging.INFO)
+    logging.basicConfig(level=level, format="%(levelname)s %(message)s")
+
+    result = analyse(args.logfile, top_n=args.top,
+                     brute_threshold=args.threshold_brute,
+                     scan_threshold=args.threshold_scan)
 
     md = to_markdown(result)
     with open(f"{args.out}.md", "w") as fh:
@@ -419,7 +547,8 @@ def main():
     with open(f"{args.out}.json", "w") as fh:
         json.dump(asdict(result), fh, indent=2, default=str)
 
-    print(f"\nReport: {args.out}.md / {args.out}.json")
+    log.info("%d alerts. Report: %s.md / %s.json",
+             len(result.alerts), args.out, args.out)
 
 
 if __name__ == "__main__":

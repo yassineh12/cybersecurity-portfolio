@@ -11,16 +11,22 @@ is public.
 Usage:
     python scanner.py https://example.com --max-pages 10
     python scanner.py https://example.com --out secrets-report
+    python scanner.py https://example.com --allowlist ignore.txt
 
 Only scan sites you own or are authorised to test.
 """
 
 from __future__ import annotations
 
+__version__ = "1.1.0"
+
 import argparse
 import json
+import logging
+import math
 import re
 import sys
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -30,6 +36,8 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "01-headers-auditor"))
 from crawler import Crawler  # noqa: E402
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -49,6 +57,7 @@ class ScanResult:
     js_files_scanned: int = 0
     inline_scripts_scanned: int = 0
     findings: list[SecretFinding] = field(default_factory=list)
+    elapsed_seconds: float = 0.0
 
 
 SECRET_RULES = [
@@ -160,7 +169,86 @@ SECRET_RULES = [
         "severity": "critical",
         "pattern": re.compile(r"key-[0-9a-zA-Z]{32}"),
     },
+    {
+        "id": "heroku-api-key",
+        "name": "Heroku API Key",
+        "severity": "critical",
+        "pattern": re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"),
+    },
+    {
+        "id": "azure-storage-key",
+        "name": "Azure Storage Account Key",
+        "severity": "critical",
+        "pattern": re.compile(r"(?:AccountKey|azure[_-]?storage[_-]?key)\s*[=:]\s*['\"]?([A-Za-z0-9+/]{86}==)['\"]?", re.I),
+    },
+    {
+        "id": "generic-api-key",
+        "name": "Generic API Key Assignment",
+        "severity": "medium",
+        "pattern": re.compile(r"""(?:api[_-]?key|apikey|api[_-]?secret)\s*[=:]\s*['"][A-Za-z0-9_\-]{20,}['"]""", re.I),
+    },
 ]
+
+
+def shannon_entropy(data: str) -> float:
+    if not data:
+        return 0.0
+    freq = {}
+    for ch in data:
+        freq[ch] = freq.get(ch, 0) + 1
+    length = len(data)
+    return -sum((c / length) * math.log2(c / length) for c in freq.values())
+
+
+def detect_high_entropy(content: str, source_url: str,
+                        min_length: int = 20,
+                        threshold: float = 4.5) -> list[SecretFinding]:
+    findings = []
+    token_re = re.compile(r"""['"]([A-Za-z0-9+/=_\-]{20,})['"]""")
+    for match in token_re.finditer(content):
+        token = match.group(1)
+        if len(token) < min_length:
+            continue
+        ent = shannon_entropy(token)
+        if ent >= threshold:
+            findings.append(SecretFinding(
+                rule_id="high-entropy-string",
+                rule_name="High-Entropy String",
+                severity="medium",
+                matched_text=token[:200] + ("..." if len(token) > 200 else ""),
+                context=get_context(content, match.start()),
+                source_url=source_url,
+                line_number=get_line_number(content, match.start()),
+            ))
+    return findings
+
+
+def load_allowlist(path: str) -> set[str]:
+    patterns = set()
+    try:
+        with open(path) as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.add(line)
+    except FileNotFoundError:
+        log.warning("Allowlist file not found: %s", path)
+    return patterns
+
+
+def apply_allowlist(findings: list[SecretFinding], allowlist: set[str]) -> list[SecretFinding]:
+    if not allowlist:
+        return findings
+    filtered = []
+    for f in findings:
+        skip = False
+        for pattern in allowlist:
+            if pattern in f.matched_text or pattern == f.rule_id:
+                skip = True
+                break
+        if not skip:
+            filtered.append(f)
+    return filtered
 
 
 def get_context(content: str, match_start: int, radius: int = 60) -> str:
@@ -178,7 +266,9 @@ def get_line_number(content: str, pos: int) -> int:
     return content[:pos].count("\n") + 1
 
 
-def scan_content(content: str, source_url: str) -> list[SecretFinding]:
+def scan_content(content: str, source_url: str,
+                 allowlist: set[str] | None = None,
+                 entropy: bool = False) -> list[SecretFinding]:
     findings = []
     for rule in SECRET_RULES:
         for match in rule["pattern"].finditer(content):
@@ -194,20 +284,27 @@ def scan_content(content: str, source_url: str) -> list[SecretFinding]:
                 source_url=source_url,
                 line_number=get_line_number(content, match.start()),
             ))
+    if entropy:
+        findings += detect_high_entropy(content, source_url)
+    if allowlist:
+        findings = apply_allowlist(findings, allowlist)
     return findings
 
 
-def scan_site(target: str, max_pages: int, delay: float) -> ScanResult:
+def scan_site(target: str, max_pages: int, delay: float,
+              allowlist: set[str] | None = None,
+              entropy: bool = False) -> ScanResult:
+    t0 = time.monotonic()
     result = ScanResult(target=target)
     session = requests.Session()
     session.headers["User-Agent"] = "SecurityPortfolioCrawler/1.0"
 
-    print(f"[1/3] Crawling {target} for JS files ...")
+    log.info("Crawling %s for JS files ...", target)
     crawler = Crawler(target, max_pages=max_pages, delay=delay, respect_robots=True)
     js_urls = set()
 
     for page in crawler.crawl():
-        print(f"  [{page.status}] {page.url}")
+        log.info("  [%s] %s", page.status, page.url)
         soup = BeautifulSoup(page.html, "html.parser")
 
         for script in soup.find_all("script", src=True):
@@ -216,21 +313,29 @@ def scan_site(target: str, max_pages: int, delay: float) -> ScanResult:
         for script in soup.find_all("script", src=False):
             if script.string and len(script.string.strip()) > 20:
                 result.inline_scripts_scanned += 1
-                result.findings += scan_content(script.string, page.url)
+                result.findings += scan_content(
+                    script.string, page.url,
+                    allowlist=allowlist, entropy=entropy,
+                )
 
-    print(f"\n[2/3] Scanning {len(js_urls)} external JS files ...")
+    log.info("Scanning %d external JS files ...", len(js_urls))
     for i, js_url in enumerate(sorted(js_urls), 1):
         try:
             resp = session.get(js_url, timeout=10)
             if resp.status_code == 200:
-                result.findings += scan_content(resp.text, js_url)
+                result.findings += scan_content(
+                    resp.text, js_url,
+                    allowlist=allowlist, entropy=entropy,
+                )
                 result.js_files_scanned += 1
         except requests.RequestException:
             pass
         if i % 10 == 0:
-            print(f"  scanned {i}/{len(js_urls)}")
+            log.debug("  scanned %d/%d", i, len(js_urls))
 
-    print(f"\n[3/3] Done. {len(result.findings)} potential secrets found.")
+    result.elapsed_seconds = round(time.monotonic() - t0, 2)
+    log.info("Done. %d potential secrets found (%.1fs).",
+             len(result.findings), result.elapsed_seconds)
     return result
 
 
@@ -241,6 +346,7 @@ def to_markdown(result: ScanResult) -> str:
         f"**JS files scanned:** {result.js_files_scanned}",
         f"**Inline scripts scanned:** {result.inline_scripts_scanned}",
         f"**Potential secrets found:** {len(result.findings)}",
+        f"**Elapsed:** {result.elapsed_seconds}s",
         "",
     ]
 
@@ -273,13 +379,30 @@ def to_markdown(result: ScanResult) -> str:
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("url")
+    ap.add_argument("url", help="target URL to scan")
     ap.add_argument("--max-pages", type=int, default=10)
     ap.add_argument("--delay", type=float, default=1.0)
-    ap.add_argument("--out", default="secrets-report")
+    ap.add_argument("--out", default="secrets-report",
+                    help="output file prefix")
+    ap.add_argument("--allowlist", metavar="FILE",
+                    help="file of patterns/rule-ids to ignore")
+    ap.add_argument("--entropy", action="store_true",
+                    help="also flag high-entropy strings (Shannon > 4.5)")
+    ap.add_argument("--verbose", "-v", action="store_true",
+                    help="debug-level output")
+    ap.add_argument("--quiet", "-q", action="store_true",
+                    help="errors only")
+    ap.add_argument("--version", action="version",
+                    version=f"%(prog)s {__version__}")
     args = ap.parse_args()
 
-    result = scan_site(args.url, args.max_pages, args.delay)
+    level = logging.DEBUG if args.verbose else (logging.ERROR if args.quiet else logging.INFO)
+    logging.basicConfig(level=level, format="%(levelname)s %(message)s")
+
+    allowed = load_allowlist(args.allowlist) if args.allowlist else None
+
+    result = scan_site(args.url, args.max_pages, args.delay,
+                       allowlist=allowed, entropy=args.entropy)
     md = to_markdown(result)
 
     with open(f"{args.out}.md", "w") as fh:
@@ -287,7 +410,8 @@ def main():
     with open(f"{args.out}.json", "w") as fh:
         json.dump(asdict(result), fh, indent=2, default=str)
 
-    print(f"\nReport: {args.out}.md / {args.out}.json")
+    log.info("%d findings. Report: %s.md / %s.json",
+             len(result.findings), args.out, args.out)
 
 
 if __name__ == "__main__":
