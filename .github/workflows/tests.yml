@@ -1,0 +1,26 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: python -m pytest -q
+      - name: WATCHTOWER detection-quality gate
+        run: |
+          cd 06-watchtower
+          python tools/generate_logs.py --out /tmp/wt.log --labels /tmp/wt.csv --seed 7 --hours 6
+          python tools/evaluate.py /tmp/wt.log /tmp/wt.csv --min-recall 0.9
