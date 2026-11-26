@@ -91,13 +91,16 @@ def test_exploit_success_detected_and_scored():
     assert not exploit_succeeded(alert("SIG-UA-SCANNER", "medium", evidence=[SQLI_OK]))
 
 
-def test_success_signal_from_detail_or_evidence_alone():
-    by_detail = alert("SIG-LOG4SHELL", "critical", detail="answered with HTTP 2xx")
-    by_evidence = alert("SIG-TRAVERSAL", "high", evidence=[SQLI_OK])
-    numbers_only = alert("SIG-SQLI", "high", detail="250 matching request(s)")
+def test_only_the_signature_detector_decides_2xx_success():
+    by_detail = alert("SIG-LOG4SHELL", "critical",
+                      detail="1 matching request(s). 1 request(s) were answered with HTTP 2xx, so ...")
+    by_escalation = alert("SIG-TRAVERSAL", "critical")
+    evidence_only = alert("SIG-TRAVERSAL", "high", evidence=[SQLI_OK])
+    bare_2xx = alert("SIG-SQLI", "high", detail="something answered 2xx somewhere, status 200")
     assert exploit_succeeded(by_detail)
-    assert exploit_succeeded(by_evidence)
-    assert not exploit_succeeded(numbers_only)
+    assert exploit_succeeded(by_escalation)
+    assert not exploit_succeeded(evidence_only)
+    assert not exploit_succeeded(bare_2xx)
 
 
 def test_brute_force_success_is_critical():
@@ -191,7 +194,7 @@ def test_2xx_answer_counted_once_lone_alert_keeps_its_severity():
     xss_200 = alert("SIG-XSS", "high", detail="answered with HTTP 2xx")
     assert score_alerts([xss_200]) == 60 and severity_for_score(60) == "high"
     # Log4Shell cannot be escalated past critical, so the bonus applies instead
-    l4s_200 = alert("SIG-LOG4SHELL", "critical", detail="answered with HTTP 2xx")
+    l4s_200 = alert("SIG-LOG4SHELL", "critical", detail="1 request(s) were answered with HTTP 2xx, so ...")
     assert score_alerts([l4s_200]) == 100
     assert score_alerts([sqli_200]) < score_alerts([l4s_200])
 
@@ -308,3 +311,28 @@ def test_summaries_match_longhorizon_detail_wording():
 def test_low_and_slow_not_repeated_when_burst_already_told():
     s = summarize(IP, [alert("BEH-404-BURST", "medium", count=80), alert("BEH-LOW-AND-SLOW", "medium", minute=1)])
     assert s == f"{IP} enumerated paths (80 requests answered 404/403/410)."
+
+
+
+DECLINED = ("4 matching request(s); patterns: union select. answered 2xx, but /docs/search answers 2xx "
+            "to ordinary requests (18 baseline, size ~4465 bytes), so not treated as success.")
+
+
+def test_declined_2xx_is_not_success_and_not_mentioned():
+    ok = [f'{IP} - - [01/Mar/2026:12:05:0{n} +0000] "GET /docs/search?q=1%27+union+select HTTP/1.1" 200 4465 "-" "Mozilla/5.0"'
+          for n in range(4)]
+    a = alert("SIG-SQLI", "high", count=4, evidence=ok, detail=DECLINED)
+    assert not exploit_succeeded(a)
+    (inc,) = correlate([a])
+    assert inc.score == 60 and inc.severity == "high"
+    assert inc.summary == f"{IP} attempted SQL injection."
+    assert "returned" not in inc.summary
+
+
+def test_partly_declined_reports_only_informative_count_without_naming_code():
+    detail = ("6 matching request(s); patterns: x. 2 request(s) were answered with HTTP 2xx, so the attempt "
+              "may have succeeded; severity raised to critical. answered 2xx, but /search answers 2xx to "
+              "ordinary requests (9 baseline, size ~100 bytes), so not treated as success.")
+    a = alert("SIG-SQLI", "critical", evidence=[SQLI_OK] * 5, detail=detail)
+    assert exploit_succeeded(a)
+    assert summarize(IP, [a]).endswith("; two attempts returned 2xx.")

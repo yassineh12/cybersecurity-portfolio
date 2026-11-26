@@ -99,7 +99,7 @@ _STATUS_RE = re.compile(r'"\s+(\d{3})\s+(?:\d+|-)|"status"\s*:\s*"?(\d{3})')
 # User agent: last quoted field of a combined line, or the JSON key.
 _UA_RE = re.compile(r'"http_user_agent"\s*:\s*"((?:[^"\\]|\\.)*)"|"([^"]*)"\s*$')
 # "3 request(s) were answered with HTTP 2xx": the true count, evidence is capped.
-_DETAIL_COUNT_RE = re.compile(r"(\d+)[^.\d]*\b2xx\b", re.IGNORECASE)
+_DETAIL_COUNT_RE = re.compile(r"(\d+) request\(s\) were answered with HTTP 2xx")
 # Long-horizon detectors' details (parsed defensively; absent numbers are omitted).
 _HOURS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:h\b|hours?\b)", re.IGNORECASE)
 _MISSES_RE = re.compile(r"(\d+)\s+(?:miss(?:es)?|not[- ]found|404s?)\b", re.IGNORECASE)
@@ -110,9 +110,9 @@ _TEMPLATE_RE = re.compile(r"(/[^\s\"']*(?:\{[^}\s]*\}|<[^>\s]*>|:id\b)[^\s\"']*)
 
 # Network-channel alerts: "distributed across 6 addresses in 2001:db8::/64: ..."
 _DISTRIBUTED_RE = re.compile(r"distributed across (\d+) addresses", re.IGNORECASE)
-# A detail that reports a 2xx answer ("got a 2xx", "answered 200"), not any 2nn number.
-_DETAIL_2XX_RE = re.compile(r"\b2xx\b|(?:status|answered|returned|response|code)\D{0,3}2\d\d\b",
-                            re.IGNORECASE)
+# Exact phrases from signatures.py: the detector decides whether a 2xx was informative.
+_INFORMATIVE_2XX = "were answered with HTTP 2xx"
+_DECLINED_2XX = "not treated as success"
 
 
 # ---------------------------------------------------------------- public ---
@@ -217,20 +217,21 @@ def severity_for_score(score: int, scoring: dict[str, Any] | None = None) -> str
 
 
 def exploit_succeeded(alert: Alert) -> bool:
-    """Did an exploit-class attempt get a 2xx answer?
+    """Did an exploit-class attempt get an *informative* 2xx answer?
 
     A 2xx to an injection payload does not prove compromise, but it means the
     application processed the request instead of rejecting it, so a human has
-    to look. Signals, any of which counts: the detector raised the alert above
-    its base severity, the detail mentions a 2xx, or the evidence shows one.
+    to look. Many endpoints (search pages, SPAs, soft-404s) answer 2xx to
+    everything, though, and there a 2xx says nothing. The signature detector
+    compares against the endpoint's baseline and is the sole authority: it
+    raises the alert above its rule's base severity and writes "were answered
+    with HTTP 2xx" when the 2xx was informative, and writes "not treated as
+    success" when it was not. Raw status codes in evidence are deliberately
+    not consulted: they would overrule that judgement.
     """
     if stage_of(alert) != "exploit":
         return False
-    if _escalated(alert):
-        return True
-    if _DETAIL_2XX_RE.search(alert.detail or ""):
-        return True
-    return bool(success_statuses(alert))
+    return _escalated(alert) or _INFORMATIVE_2XX in (alert.detail or "")
 
 
 def _escalated(alert: Alert) -> bool:
@@ -453,18 +454,28 @@ def _scanner_name(alert: Alert) -> str | None:
 
 
 def _success_clause(alerts: list[Alert]) -> str:
+    """ "one attempt returned 200"; empty when no 2xx was informative.
+
+    The count is the detector's informative count from the detail (evidence is
+    capped at five lines). The status is named from evidence only when the
+    detector declined no 2xx for that alert, since otherwise the evidence may
+    show the uninformative ones.
+    """
     winners = [a for a in alerts if exploit_succeeded(a)]
     if not winners:
         return ""
-    codes = [c for a in winners for c in success_statuses(a)]
-    reported = 0
+    n = 0
+    codes: list[int] = []
     for a in winners:
         m = _DETAIL_COUNT_RE.search(a.detail or "")
-        reported += max(int(m.group(1)) if m else 0, len(success_statuses(a)))
-    n = max(reported, len(codes))
+        n += int(m.group(1)) if m else 0
+        if _DECLINED_2XX not in (a.detail or ""):
+            codes.extend(success_statuses(a))
+        else:
+            codes.append(0)                    # unknown code: forces "2xx"
     if not n:
         return "at least one attempt got a 2xx answer"
-    status = str(codes[0]) if codes and len(set(codes)) == 1 else "2xx"
+    status = str(codes[0]) if codes and len(set(codes)) == 1 and codes[0] else "2xx"
     verb_subject = "one attempt" if n == 1 else f"{_word(n)} attempts"
     return f"{verb_subject} returned {status}"
 

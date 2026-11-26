@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-26T16:17:43.098806+00:00",
+  "generated_at": "2026-11-26T16:19:10.568031+00:00",
   "stats": {
     "lines_read": 3442,
     "lines_parsed": 3442,
@@ -27,8 +27,8 @@
     "incidents_by_severity": {
       "low": 0,
       "medium": 7,
-      "high": 2,
-      "critical": 8
+      "high": 3,
+      "critical": 7
     },
     "read_errors": [],
     "network_incidents": 2
@@ -141,7 +141,7 @@
       ],
       "first_seen": "2026-11-01T02:02:12+00:00",
       "last_seen": "2026-11-01T02:02:19+00:00",
-      "summary": "203.0.113.15 sent a Log4Shell (JNDI lookup) payload; three attempts returned 200.",
+      "summary": "203.0.113.15 sent a Log4Shell (JNDI lookup) payload; one attempt returned 2xx.",
       "alerts": [
         {
           "rule_id": "SIG-LOG4SHELL",
@@ -342,14 +342,14 @@
     },
     {
       "client_ip": "198.51.100.251",
-      "score": 80,
-      "severity": "critical",
+      "score": 65,
+      "severity": "high",
       "stages": [
         "exploit"
       ],
       "first_seen": "2026-11-01T01:59:53+00:00",
       "last_seen": "2026-11-01T02:02:47+00:00",
-      "summary": "198.51.100.251 attempted cross-site scripting, then attempted SQL injection; four attempts returned 200.",
+      "summary": "198.51.100.251 attempted cross-site scripting, then attempted SQL injection.",
       "alerts": [
         {
           "rule_id": "SIG-XSS",

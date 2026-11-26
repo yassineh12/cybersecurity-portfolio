@@ -1,6 +1,6 @@
 # WATCHTOWER Threat Detection Report
 
-Generated: 2026-11-26 16:17:43 UTC
+Generated: 2026-11-26 16:19:10 UTC
 
 ## Scan summary
 
@@ -16,8 +16,8 @@ Generated: 2026-11-26 16:17:43 UTC
 
 | Severity | Incidents |
 |---|---|
-| critical | 8 |
-| high | 2 |
+| critical | 7 |
+| high | 3 |
 | medium | 7 |
 | low | 0 |
 
@@ -108,7 +108,7 @@ Recommended actions:
 - Severity: critical
 - Stages: exploit
 - Window: 2026-11-01 02:02:12 UTC to 2026-11-01 02:02:19 UTC
-- Summary: 203.0.113.15 sent a Log4Shell \(JNDI lookup\) payload; three attempts returned 200.
+- Summary: 203.0.113.15 sent a Log4Shell \(JNDI lookup\) payload; one attempt returned 2xx.
 
 | Rule | Severity | ATT&CK | Count | First seen | Last seen |
 |---|---|---|---|---|---|
@@ -273,14 +273,14 @@ Recommended actions:
 - Block or rate-limit 203.0.113.27 at the WAF or firewall.
 - Brute force succeeded: reset the affected account's credentials, revoke active sessions and review what the session did after login.
 
-### 8. 198.51.100.251 (critical, score 80)
+### 8. 198.51.100.251 (high, score 65)
 
 - Client: 198.51.100.251
-- Score: 80/100
-- Severity: critical
+- Score: 65/100
+- Severity: high
 - Stages: exploit
 - Window: 2026-11-01 01:59:53 UTC to 2026-11-01 02:02:47 UTC
-- Summary: 198.51.100.251 attempted cross-site scripting, then attempted SQL injection; four attempts returned 200.
+- Summary: 198.51.100.251 attempted cross-site scripting, then attempted SQL injection.
 
 | Rule | Severity | ATT&CK | Count | First seen | Last seen |
 |---|---|---|---|---|---|
