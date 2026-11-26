@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import dataclasses
 from datetime import datetime, timedelta, timezone
 
 from watchtower.detectors.behaviour import (
@@ -395,3 +396,74 @@ def test_net_distinct_count_caps(monkeypatch):
     evs = [ev(i * 0.1, ip=v6(i)) for i in range(100)]
     a = run(EnumerationDetector(), evs)[0]
     assert a.detail.startswith("distributed across 30+ addresses in ")
+
+
+# ---- keyword login paths, path-agnostic 401/403, size change, UA rotation ----
+
+def rawpost(sec, status, path, size=0, ua="", ip="192.0.2.1"):
+    return dataclasses.replace(ev(sec, ip=ip, method="POST", path=path, status=status),
+                               bytes_sent=size, user_agent=ua)
+
+
+def test_keyword_login_path_sign_in():
+    alerts = run(BruteForceDetector(), [rawpost(i, 401, "/members/sign-in") for i in range(12)])
+    assert [(a.rule_id, a.severity) for a in alerts] == [("BEH-BRUTE-FORCE", "high")]
+    alerts = run(BruteForceDetector(), [rawpost(i, 200, "/members/sign-in") for i in range(12)])
+    assert [(a.rule_id, a.severity) for a in alerts] == [("BEH-BRUTE-FORCE", "medium")]
+
+
+def test_keyword_login_path_oauth_token():
+    alerts = run(BruteForceDetector(), [rawpost(i, 401, "/oauth2/token") for i in range(12)])
+    assert [a.rule_id for a in alerts] == ["BEH-BRUTE-FORCE"]
+
+
+def test_keywords_disabled_and_whole_word_only():
+    evs = [rawpost(i, 401, "/members/sign-in") for i in range(12)]
+    assert run(BruteForceDetector(login_keywords=()), evs) == []
+    # "authors" is not "auth"; 25 x 200 form posts stay quiet
+    assert run(BruteForceDetector(), [rawpost(i, 200, "/authors/new") for i in range(25)]) == []
+
+
+def test_benign_form_200_on_contact_quiet():
+    assert run(BruteForceDetector(), [rawpost(i, 200, "/contact") for i in range(15)]) == []
+
+
+def test_path_agnostic_403_needs_double_threshold():
+    quiet = [rawpost(i, 403, "/app/settings/save") for i in range(12)]
+    assert run(BruteForceDetector(), quiet) == []
+    alerts = run(BruteForceDetector(), [rawpost(i, 403, "/app/settings/save") for i in range(25)])
+    assert [(a.rule_id, a.severity) for a in alerts] == [("BEH-BRUTE-FORCE", "high")]
+    assert "repeated 401/403 on /app/settings/save" in alerts[0].detail
+    assert alerts[0].event_count == 25
+    # factor is configurable
+    assert len(run(BruteForceDetector(path_agnostic_factor=1), quiet)) == 1
+
+
+def test_uniform_200_then_different_size_success():
+    evs = [rawpost(i, 200, "/api/login", size=512 + (i % 3) - 1) for i in range(12)]
+    evs.append(rawpost(20, 200, "/api/login", size=1500))
+    by = {a.rule_id: a for a in run(BruteForceDetector(), evs)}
+    assert set(by) == {"BEH-BRUTE-FORCE", "BEH-BRUTE-SUCCESS"}
+    s = by["BEH-BRUTE-SUCCESS"]
+    assert s.severity == "high"
+    assert "to 1500 bytes after 12 uniform answers; likely success" in s.detail
+    assert "response size changed from ~51" in s.detail
+
+
+def test_varied_sizes_no_size_success():
+    evs = [rawpost(i, 200, "/api/login", size=100 + i * 90) for i in range(12)]
+    evs.append(rawpost(20, 200, "/api/login", size=5000))
+    assert "BEH-BRUTE-SUCCESS" not in {a.rule_id for a in run(BruteForceDetector(), evs)}
+
+
+def test_same_size_after_uniform_is_not_success():
+    evs = [rawpost(i, 200, "/api/login", size=512) for i in range(13)]
+    assert "BEH-BRUTE-SUCCESS" not in {a.rule_id for a in run(BruteForceDetector(), evs)}
+
+
+def test_user_agent_rotation_noted():
+    evs = [rawpost(i, 401, "/login", ua=f"agent-{i % 6}") for i in range(12)]
+    a = run(BruteForceDetector(), evs)[0]
+    assert "user agent rotated across 6 values" in a.detail
+    evs = [rawpost(i, 401, "/login", ua=f"agent-{i % 2}") for i in range(12)]
+    assert "user agent rotated" not in run(BruteForceDetector(), evs)[0].detail

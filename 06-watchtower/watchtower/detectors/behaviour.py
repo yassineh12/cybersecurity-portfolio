@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from collections import deque
+from collections import Counter, deque
 from datetime import datetime, timedelta
 
 from watchtower.models import Alert, LogEvent
@@ -32,6 +32,9 @@ from watchtower.models import Alert, LogEvent
 MAX_EVIDENCE = 5
 BOUNCE_SECONDS = 10  # max gap between a 302 login POST and the GET back to the form
 _SWEEP_EVERY = 1024  # events between idle-client sweeps
+DEFAULT_LOGIN_KEYWORDS = ("login", "logon", "signin", "sign-in", "sign_in", "auth",
+                          "authenticate", "token", "session", "sessions", "oauth")
+MAX_UA_TRACKED = 50
 NET_ADDR_CAP = 10_000  # distinct addresses remembered per network window
 
 
@@ -51,16 +54,36 @@ def normalise_path(path: str) -> str:
     return p
 
 
-def is_login_path(path: str, login_paths: tuple[str, ...]) -> bool:
-    """True if path equals a login path, optionally followed by "?query".
+def keyword_pattern(keywords: tuple[str, ...]) -> re.Pattern | None:
+    """Regex matching a keyword as a whole word inside one path segment.
 
-    Exact matching only: "/admin" must not swallow every page under /admin
-    (a busy admin UI saving records would look like a brute force).
+    "sign-in", "wp-login.php" and "oauth2" match; "authors" does not.
+    """
+    kws = [k.lower() for k in keywords if k]
+    if not kws:
+        return None
+    alt = "|".join(re.escape(k) for k in sorted(kws, key=len, reverse=True))
+    return re.compile(rf"(?:^|[-_.])(?:{alt})\d*(?:$|[-_.])")
+
+
+def is_login_path(path: str, login_paths: tuple[str, ...],
+                  pattern: re.Pattern | None = None) -> bool:
+    """True if path is a login candidate.
+
+    Either it equals a login path (optionally followed by "?query"), or any
+    of its segments contains a login keyword (see keyword_pattern) so sites
+    with their own URL scheme (/members/sign-in, /oauth2/token) are covered.
+    Listed paths match exactly: "/admin" must not swallow every page under
+    /admin (a busy admin UI saving records would look like a brute force).
     """
     p = normalise_path(path)
     base = p.split("?", 1)[0]
     base = base.rstrip("/") or "/" if len(base) > 1 else base
-    return any(base == normalise_path(lp) for lp in login_paths)
+    if any(base == normalise_path(lp) for lp in login_paths):
+        return True
+    if pattern is None:
+        return False
+    return any(pattern.search(seg) for seg in base.split("/") if seg)
 
 
 class _Window:
@@ -94,10 +117,11 @@ class _Chan:
                 return None
         return win
 
-    def add(self, event: LogEvent) -> _Window:
-        win = self.wins.get(event.client_ip)
+    def add(self, event: LogEvent, key: str | None = None) -> _Window:
+        key = key or event.client_ip
+        win = self.wins.get(key)
         if win is None:
-            win = self.wins[event.client_ip] = _Window()
+            win = self.wins[key] = _Window()
         self._evict(win, event.timestamp)
         win.times.append(event.timestamp)
         win.evidence.append(_line(event))
@@ -480,7 +504,19 @@ class BruteForceDetector(_WindowDetector):
     indistinguishable from a failure.
 
     Login paths match exactly (or with ?query); "/admin" does not cover
-    every page under /admin.
+    every page under /admin. A path is also a login candidate when a segment
+    contains a login keyword (login, signin, auth, token, session, oauth...;
+    `login_keywords`, empty tuple disables).
+
+    Two more signals: repeated 401/403 POSTs to the same non-login path
+    (`path_agnostic_factor` x the threshold, e.g. an API with its own auth
+    route), and JSON APIs that answer failures 200 - if the response size is
+    uniform for many attempts and then a 2xx differs sharply, the guess
+    probably worked (BEH-BRUTE-SUCCESS, high: inferred, not certain). A
+    rotating user agent across the attempts is noted in the detail.
+
+    Known limitation: password spraying (one client, many usernames, very
+    low rate per account) is not visible from paths and status codes alone.
 
     False-positive risk: many real users behind one NAT gateway or corporate
     proxy share an IP, and a user who forgot a password or an automated
@@ -495,14 +531,22 @@ class BruteForceDetector(_WindowDetector):
                                                  "/admin", "/admin/login", "/api/auth",
                                                  "/api/login", "/user/login", "/xmlrpc.php"),
                  ipv6_prefix: int | None = 64, ipv4_prefix: int | None = None,
-                 min_distinct: int = 4):
+                 min_distinct: int = 4,
+                 login_keywords: tuple[str, ...] = DEFAULT_LOGIN_KEYWORDS,
+                 path_agnostic_factor: int = 2):
         self._posts = _Chan(threshold, window_seconds)
         self._fails = _Chan(threshold, window_seconds)
+        self._pathfails = _Chan(max(1, int(threshold)) * max(1, int(path_agnostic_factor)),
+                                window_seconds)
         self._nposts = _NetChan(threshold, window_seconds, ipv4_prefix, ipv6_prefix, min_distinct)
         self._nfails = _NetChan(threshold, window_seconds, ipv4_prefix, ipv6_prefix, min_distinct)
-        super().__init__(self._posts, self._fails, self._nposts, self._nfails)
+        super().__init__(self._posts, self._fails, self._nposts, self._nfails, self._pathfails)
         self.threshold = self._posts.threshold
         self.login_paths = tuple(login_paths)
+        self.login_keywords = tuple(login_keywords)
+        self._kw = keyword_pattern(self.login_keywords)
+        self._sizes: dict[str, deque[tuple[datetime, int]]] = {}  # 200-answer sizes per client+path
+        self._uas: dict[str, set[str]] = {}                       # user agents per client
         self._totals: dict[str, int] = {}   # explicit failures seen, per alerted client
         self._pending: dict[str, LogEvent] = {}   # 302/303 login POSTs awaiting the next request
         self._inferred: set[str] = set()          # clients with redirect-bounce failures
@@ -513,6 +557,19 @@ class BruteForceDetector(_WindowDetector):
             self._pending = {ip: p for ip, p in self._pending.items()
                              if abs((now - p.timestamp).total_seconds()) <= BOUNCE_SECONDS}
             self._inferred &= set(self._posts.wins)
+            for k in list(self._sizes):
+                self._evict_sizes(self._sizes[k], now)
+                if not self._sizes[k]:
+                    del self._sizes[k]
+            self._uas = {ip: u for ip, u in self._uas.items()
+                         if ip in self._posts.wins or (ip, "BEH-BRUTE-FORCE") in self._alerts}
+
+    def _is_login(self, path: str) -> bool:
+        return is_login_path(path, self.login_paths, self._kw)
+
+    def _evict_sizes(self, dq, now: datetime) -> None:
+        while dq and now - dq[0][0] > self._posts.window:
+            dq.popleft()
 
     @staticmethod
     def _base(path: str) -> str:
@@ -526,7 +583,7 @@ class BruteForceDetector(_WindowDetector):
         pend = self._pending.pop(event.client_ip, None)
         if (pend is None or event.method not in ("GET", "POST")
                 or self._base(event.path) != self._base(pend.path)
-                or not is_login_path(event.path, self.login_paths)
+                or not self._is_login(event.path)
                 or (event.timestamp - pend.timestamp).total_seconds() > BOUNCE_SECONDS):
             return
         self._inferred.add(event.client_ip)
@@ -534,7 +591,12 @@ class BruteForceDetector(_WindowDetector):
 
     def _feed(self, event: LogEvent) -> None:
         self._resolve_pending(event)
-        if event.method != "POST" or not is_login_path(event.path, self.login_paths):
+        if event.method != "POST":
+            return
+        if not self._is_login(event.path):
+            if event.status in (401, 403):
+                self._tick(event.timestamp)
+                self._path_failure(event)
             return
         self._tick(event.timestamp)
         status = event.status
@@ -542,12 +604,63 @@ class BruteForceDetector(_WindowDetector):
         success = 200 <= status < 300 or status == 302
         if success:
             self._maybe_success(event)
+        if 200 <= status < 300:
+            self._size_check(event)
         if status in (302, 303):
             self._pending[event.client_ip] = event
             return
         if not (explicit or status == 200):
             return  # other 2xx are normal successes, not volume
         self._count_post(event, explicit)
+
+    def _path_failure(self, event: LogEvent) -> None:
+        """Repeated 401/403 POSTs to one non-login path (path-agnostic)."""
+        base = self._base(event.path)
+        win = self._pathfails.add(event, key=f"{event.client_ip}\x00{base}")
+        key = (event.client_ip, "BEH-BRUTE-FORCE")
+        alert = self._alerts.get(key)
+        n = len(win.times)
+        if alert is not None:
+            if self._pathfails.hit(win):
+                self._extend(alert, event)
+            return
+        if not self._pathfails.hit(win):
+            return
+        self._alerts[key] = Alert(
+            rule_id="BEH-BRUTE-FORCE", title="Login brute force", severity="high",
+            client_ip=event.client_ip, first_seen=win.times[0], last_seen=event.timestamp,
+            event_count=n, technique="T1110", evidence=list(win.evidence),
+            detail=(f"repeated 401/403 on {event.path}: {n} POSTs within "
+                    f"{self._pathfails.seconds}s (threshold {self._pathfails.threshold})."))
+
+    def _size_check(self, event: LogEvent) -> None:
+        """JSON APIs answer failures 200. Uniform response size over many
+        attempts, then a 2xx of a different size, suggests the guess worked."""
+        ip = event.client_ip
+        skey = f"{ip}\x00{self._base(event.path)}"
+        dq = self._sizes.get(skey)
+        if dq is not None:
+            self._evict_sizes(dq, event.timestamp)
+        key = (ip, "BEH-BRUTE-SUCCESS")
+        if dq and len(dq) >= self.threshold and key not in self._alerts:
+            sizes = [sz for _, sz in dq]
+            mode = Counter(sizes).most_common(1)[0][0]
+            dominant = sum(1 for sz in sizes if abs(sz - mode) <= 2)
+            if (dominant >= 0.8 * len(sizes)
+                    and abs(event.bytes_sent - mode) > 0.2 * max(mode, 1)):
+                pw = self._posts.peek(ip, event.timestamp)
+                prior = list(pw.evidence)[-(MAX_EVIDENCE - 1):] if pw else []
+                self._alerts[key] = Alert(
+                    rule_id="BEH-BRUTE-SUCCESS", title="Successful login after brute force",
+                    severity="high", client_ip=ip, first_seen=dq[0][0],
+                    last_seen=event.timestamp, event_count=len(dq) + 1, technique="T1110",
+                    evidence=prior + [_line(event)],
+                    detail=(f"response size changed from ~{mode} to {event.bytes_sent} bytes "
+                            f"after {dominant} uniform answers; likely success."))
+        if event.status == 200:
+            if dq is None:
+                dq = self._sizes[skey] = deque()
+            dq.append((event.timestamp, event.bytes_sent))
 
     def _count_post(self, event: LogEvent, explicit: bool) -> None:
         self._client_post(event, explicit)
@@ -591,6 +704,9 @@ class BruteForceDetector(_WindowDetector):
             technique="T1110", evidence=list(nw.evidence), detail=detail + ".")
 
     def _client_post(self, event: LogEvent, explicit: bool) -> None:
+        uas = self._uas.setdefault(event.client_ip, set())
+        if len(uas) < MAX_UA_TRACKED:
+            uas.add(event.user_agent)
         pw = self._posts.add(event)
         if explicit:
             self._fails.add(event)
@@ -650,6 +766,13 @@ class BruteForceDetector(_WindowDetector):
                     f"attempts (401/403); credentials may be compromised."))
 
     def flush(self) -> list[Alert]:
+        for (ip, rule), alert in self._alerts.items():
+            uas = self._uas.get(ip)
+            if rule == "BEH-BRUTE-FORCE" and uas and len(uas) >= 5:
+                alert.detail = (alert.detail.rstrip(".")
+                                + f"; user agent rotated across {len(uas)} values.")
+        self._uas = {}
+        self._sizes = {}
         self._totals = {}
         self._pending = {}  # unresolved 302s are not failures
         self._inferred = set()
