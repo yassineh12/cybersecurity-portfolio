@@ -305,7 +305,7 @@ def test_net_enum_ipv6_64_rotation():
     assert len(alerts) == 1
     a = alerts[0]
     assert a.rule_id == "BEH-404-BURST" and a.client_ip == "2001:db8:abcd:12::/64"
-    assert a.detail.startswith("distributed across 20 addresses in 2001:db8:abcd:12::/64: ")
+    assert a.detail.startswith("distributed across 400 addresses in 2001:db8:abcd:12::/64: ")
     assert a.event_count == 400 and len(a.evidence) == 5
 
 
@@ -376,3 +376,22 @@ def test_net_odd_addresses_ignored():
     for ip in ("", "-", "not-an-ip", "fe80::1%eth0", "999.1.1.1"):
         det.feed(ev(0, ip=ip))
     assert det.flush() == []
+
+
+def test_net_distinct_count_is_total_over_alert_life():
+    evs = [ev(i * 0.1, ip=v6(i)) for i in range(200)]  # alert opens at the 20th
+    a = run(EnumerationDetector(), evs)[0]
+    assert a.detail.startswith("distributed across 200 addresses in 2001:db8:abcd:12::/64: ")
+    # repeat visitors are not double counted
+    evs = [ev(i * 0.1, ip=v6(i % 50)) for i in range(200)]
+    a = run(BruteForceDetector(), [post(i * 0.5, 401, path="/login", ip=v6(i % 50))
+                                   for i in range(200)])[0]
+    assert a.detail.startswith("distributed across 50 addresses in ")
+
+
+def test_net_distinct_count_caps(monkeypatch):
+    import watchtower.detectors.behaviour as b
+    monkeypatch.setattr(b, "NET_ADDR_CAP", 30)
+    evs = [ev(i * 0.1, ip=v6(i)) for i in range(100)]
+    a = run(EnumerationDetector(), evs)[0]
+    assert a.detail.startswith("distributed across 30+ addresses in ")

@@ -23,6 +23,7 @@ and no single address already did (that case is a per-client alert).
 from __future__ import annotations
 
 import ipaddress
+import re
 from collections import deque
 from datetime import datetime, timedelta
 
@@ -217,6 +218,29 @@ class _NetChan:
         return int(self.window.total_seconds())
 
 
+class _NetSeen:
+    """Distinct addresses that contributed to one open network alert."""
+    __slots__ = ("addrs", "capped")
+
+    def __init__(self) -> None:
+        self.addrs: set[str] = set()
+        self.capped = False
+
+    def add(self, addr: str) -> None:
+        if addr in self.addrs:
+            return
+        if len(self.addrs) < NET_ADDR_CAP:
+            self.addrs.add(addr)
+        else:
+            self.capped = True
+
+    def label(self) -> str:
+        return f"{NET_ADDR_CAP}+" if self.capped else str(len(self.addrs))
+
+
+_SPREAD_RE = re.compile(r"^distributed across \S+ addresses in ")
+
+
 def _spread(net: str, nw: _NetWin) -> str:
     return f"distributed across {nw.distinct} addresses in {net}: "
 
@@ -229,6 +253,20 @@ class _WindowDetector:
         self._chans = chans
         self._alerts: dict[tuple[str, str], Alert] = {}
         self._seen = 0
+        self._net_seen: dict[tuple[str, str], _NetSeen] = {}
+
+    def _seed(self, key: tuple[str, str], nw: _NetWin) -> None:
+        """Start tracking contributors of a newly opened network alert."""
+        seen = self._net_seen[key] = _NetSeen()
+        for addr in nw.counts:
+            seen.add(addr)
+        if nw.overflow:
+            seen.capped = True
+
+    def _track(self, key: tuple[str, str], event: LogEvent) -> None:
+        seen = self._net_seen.get(key)
+        if seen is not None:
+            seen.add(event.client_ip)
 
     @property
     def _windows(self) -> dict[str, _Window]:  # primary channel, for inspection
@@ -257,6 +295,14 @@ class _WindowDetector:
         raise NotImplementedError
 
     def flush(self) -> list[Alert]:
+        # N in "distributed across N addresses" is the total seen over the
+        # alert's life, not the count when it opened
+        for key, seen in self._net_seen.items():
+            alert = self._alerts.get(key)
+            if alert is not None:
+                alert.detail = _SPREAD_RE.sub(
+                    f"distributed across {seen.label()} addresses in ", alert.detail)
+        self._net_seen = {}
         out = sorted(self._alerts.values(), key=lambda a: (a.first_seen, a.client_ip))
         self._alerts = {}
         for ch in self._chans:
@@ -312,6 +358,7 @@ class EnumerationDetector(_WindowDetector):
         if alert is not None:
             if self._nfast.active(fw) or self._nslow.active(sw):
                 self._extend(alert, event)
+                self._track(key, event)
             return
         fast, slow = self._nfast.hit(fw), self._nslow.hit(sw)
         if not (fast or slow):
@@ -319,6 +366,7 @@ class EnumerationDetector(_WindowDetector):
         nw, ch = (fw, self._nfast) if fast else (sw, self._nslow)
         n = len(nw.q)
         kind = "" if fast else "slow enumeration: "
+        self._seed(key, nw)
         self._alerts[key] = Alert(
             rule_id="BEH-404-BURST", title="Burst of 404/403/410 responses (path enumeration)",
             severity="medium", client_ip=net, first_seen=nw.q[0][0],
@@ -388,8 +436,10 @@ class RateDetector(_WindowDetector):
         if alert is not None:
             if self._nch.active(nw):
                 self._extend(alert, event)
+                self._track(key, event)
         elif self._nch.hit(nw):
             n = len(nw.q)
+            self._seed(key, nw)
             self._alerts[key] = Alert(
                 rule_id="BEH-RATE-SPIKE", title="Request rate spike",
                 severity="low", client_ip=net, first_seen=nw.q[0][0],
@@ -516,6 +566,7 @@ class BruteForceDetector(_WindowDetector):
         if alert is not None:
             if self._nposts.active(nw):
                 self._extend(alert, event)
+                self._track(key, event)
                 if explicit:
                     alert.severity = "high"
                 if event.client_ip in self._inferred and note not in alert.detail:
@@ -532,6 +583,7 @@ class BruteForceDetector(_WindowDetector):
             detail += "; status-agnostic; lower confidence"
         if event.client_ip in self._inferred:
             detail += "; " + note
+        self._seed(key, nw)
         self._alerts[key] = Alert(
             rule_id="BEH-BRUTE-FORCE", title="Login brute force",
             severity="high" if nfail else "medium", client_ip=net,

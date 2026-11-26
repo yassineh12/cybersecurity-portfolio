@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-26T16:09:50.833767+00:00",
+  "generated_at": "2026-11-26T16:10:47.059056+00:00",
   "stats": {
     "lines_read": 3061,
     "lines_parsed": 3061,
@@ -469,7 +469,7 @@
       ],
       "first_seen": "2026-11-01T01:23:58+00:00",
       "last_seen": "2026-11-01T01:25:37+00:00",
-      "summary": "Clients in 2001:db8:bad:1::/64 (20 addresses) enumerated paths (200 requests answered 404/403/410).",
+      "summary": "Clients in 2001:db8:bad:1::/64 (200 addresses) enumerated paths (200 requests answered 404/403/410).",
       "alerts": [
         {
           "rule_id": "BEH-404-BURST",
@@ -487,7 +487,7 @@
             "2001:db8:bad:1:d4f6:2f4e:ec88:eca5 - - [01/Nov/2026:01:24:06 +0000] \"GET /web/ HTTP/1.1\" 404 383 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
             "2001:db8:bad:1:cfe4:1c99:a70f:1071 - - [01/Nov/2026:01:24:06 +0000] \"GET /site/ HTTP/1.1\" 404 172 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
           ],
-          "detail": "distributed across 20 addresses in 2001:db8:bad:1::/64: 20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
+          "detail": "distributed across 200 addresses in 2001:db8:bad:1::/64: 20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
         }
       ]
     }
@@ -581,7 +581,7 @@
         "2001:db8:bad:1:d4f6:2f4e:ec88:eca5 - - [01/Nov/2026:01:24:06 +0000] \"GET /web/ HTTP/1.1\" 404 383 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
         "2001:db8:bad:1:cfe4:1c99:a70f:1071 - - [01/Nov/2026:01:24:06 +0000] \"GET /site/ HTTP/1.1\" 404 172 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
       ],
-      "detail": "distributed across 20 addresses in 2001:db8:bad:1::/64: 20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
+      "detail": "distributed across 200 addresses in 2001:db8:bad:1::/64: 20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
     },
     {
       "rule_id": "SIG-TRAVERSAL",

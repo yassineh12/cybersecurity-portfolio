@@ -1,6 +1,6 @@
 # WATCHTOWER Threat Detection Report
 
-Generated: 2026-11-26 16:09:50 UTC
+Generated: 2026-11-26 16:10:47 UTC
 
 ## Scan summary
 
@@ -391,13 +391,13 @@ Recommended actions:
 - Severity: medium
 - Stages: recon
 - Window: 2026-11-01 01:23:58 UTC to 2026-11-01 01:25:37 UTC
-- Summary: Clients in 2001:db8:bad:1::/64 \(20 addresses\) enumerated paths \(200 requests answered 404/403/410\).
+- Summary: Clients in 2001:db8:bad:1::/64 \(200 addresses\) enumerated paths \(200 requests answered 404/403/410\).
 
 | Rule | Severity | ATT&CK | Count | First seen | Last seen |
 |---|---|---|---|---|---|
 | BEH-404-BURST | medium | [T1595.003](https://attack.mitre.org/techniques/T1595/003/) | 200 | 2026-11-01 01:23:58 UTC | 2026-11-01 01:25:37 UTC |
 
-**BEH-404-BURST**: Burst of 404/403/410 responses \(path enumeration\) (distributed across 20 addresses in 2001:db8:bad:1::/64: 20 miss responses \(404/403/410\) within 60s \(threshold 20\); consistent with directory guessing.)
+**BEH-404-BURST**: Burst of 404/403/410 responses \(path enumeration\) (distributed across 200 addresses in 2001:db8:bad:1::/64: 20 miss responses \(404/403/410\) within 60s \(threshold 20\); consistent with directory guessing.)
 
 ```text
 2001:db8:bad:1:253c:5089:e2e:a1ef - - [01/Nov/2026:01:24:05 +0000] "GET /files/ HTTP/1.1" 404 533 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
