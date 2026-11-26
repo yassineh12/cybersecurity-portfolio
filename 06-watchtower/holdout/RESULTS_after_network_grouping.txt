@@ -1,0 +1,84 @@
+WATCHTOWER evaluation (incidents counted at severity >= low)
+
+Scenario             Label      Clients  Flagged  Result
+-------------------  ---------  -------  -------  ------
+browser_ua_attacker  malicious        1        1  ok
+cmdi_probe           malicious        1        1  ok
+ipv6_slash64_enum    malicious       40        0  MISSED
+jndi_probe           malicious        1        1  ok
+scanner_wpscan       malicious        1        1  ok
+secret_probe         malicious        1        1  ok
+slow_discovery       malicious        1        1  ok
+sqli_mixed           malicious        1        1  ok
+stuffing_api_json    malicious        1        0  MISSED
+stuffing_form        malicious        1        0  MISSED
+traversal_probe      malicious        1        1  ok
+xss_probe            malicious        1        1  ok
+api_poller           benign           1        0  ok
+broken_images        benign           1        0  ok
+bulk_tabs_shopper    benign           1        0  ok
+cgnat_mobile         benign           1        0  ok
+dev_docs_reader      benign           1        1  FALSE POS
+link_preview_bot     benign           1        0  ok
+password_reset_user  benign           1        0  ok
+rss_reader           benign           1        0  ok
+search_crawler       benign           1        0  ok
+second_crawler       benign           1        0  ok
+security_employee    benign           1        0  ok
+shopper_v4           benign          22        0  ok
+shopper_v6           benign           6        0  ok
+typo_password_user   benign           1        0  ok
+uptime_monitor       benign           1        0  ok
+webhook_partner      benign           1        0  ok
+
+TP 9   FP 1   FN 42   TN 41   (clients: 93)
+Precision  90.0%   Recall  17.6%   F1  29.5%
+
+False positives (benign clients flagged):
+  203.0.113.88     dev_docs_reader          rules: SIG-SQLI, SIG-XSS
+
+Missed (malicious clients not flagged):
+  198.51.100.99    stuffing_api_json
+  2001:db8:4a:7:1551:b6a7:cbb9:1ebd ipv6_slash64_enum
+  2001:db8:4a:7:198d:f9a8:6efc:d60d ipv6_slash64_enum
+  2001:db8:4a:7:1aa:7c5:83ee:7f1d ipv6_slash64_enum
+  2001:db8:4a:7:287b:ea20:67d9:24ad ipv6_slash64_enum
+  2001:db8:4a:7:3374:3ed3:1cc0:6534 ipv6_slash64_enum
+  2001:db8:4a:7:38c7:2b88:d2ad:964c ipv6_slash64_enum
+  2001:db8:4a:7:463d:8f37:bdbd:cf0e ipv6_slash64_enum
+  2001:db8:4a:7:53b2:2b8e:87bf:d425 ipv6_slash64_enum
+  2001:db8:4a:7:67f2:8b56:32a1:396a ipv6_slash64_enum
+  2001:db8:4a:7:681f:f13b:10d5:8cb ipv6_slash64_enum
+  2001:db8:4a:7:6af5:11f9:3c1f:9e22 ipv6_slash64_enum
+  2001:db8:4a:7:6cbf:cafe:bb7f:8e62 ipv6_slash64_enum
+  2001:db8:4a:7:7203:feac:d2b8:eda6 ipv6_slash64_enum
+  2001:db8:4a:7:7463:85b5:794b:d790 ipv6_slash64_enum
+  2001:db8:4a:7:7ba8:ef5f:d689:bf61 ipv6_slash64_enum
+  2001:db8:4a:7:7cce:3ad5:db13:9656 ipv6_slash64_enum
+  2001:db8:4a:7:817b:fc5a:ae1c:4c74 ipv6_slash64_enum
+  2001:db8:4a:7:876a:337e:2757:3468 ipv6_slash64_enum
+  2001:db8:4a:7:90:1886:71aa:b4f0 ipv6_slash64_enum
+  2001:db8:4a:7:9cf4:5967:2e67:f5db ipv6_slash64_enum
+  2001:db8:4a:7:9f33:fa6a:3c3e:c006 ipv6_slash64_enum
+  2001:db8:4a:7:a61f:ca2:a940:7b0f ipv6_slash64_enum
+  2001:db8:4a:7:aed6:cc7d:a37d:1a76 ipv6_slash64_enum
+  2001:db8:4a:7:b5b0:b452:1a30:8a8 ipv6_slash64_enum
+  2001:db8:4a:7:bdad:7d4c:b5d7:f3ea ipv6_slash64_enum
+  2001:db8:4a:7:c8ee:c3cb:7841:f8c5 ipv6_slash64_enum
+  2001:db8:4a:7:ce87:8695:5870:9c10 ipv6_slash64_enum
+  2001:db8:4a:7:d2b3:9a31:c936:da97 ipv6_slash64_enum
+  2001:db8:4a:7:d3d6:4df0:4886:be93 ipv6_slash64_enum
+  2001:db8:4a:7:dc0a:63d1:301:71e2 ipv6_slash64_enum
+  2001:db8:4a:7:dd62:3dbf:f6d5:2b37 ipv6_slash64_enum
+  2001:db8:4a:7:e454:fb28:a658:52b1 ipv6_slash64_enum
+  2001:db8:4a:7:e5ca:d298:c6f7:70cf ipv6_slash64_enum
+  2001:db8:4a:7:ed2d:6f0b:7bee:fc05 ipv6_slash64_enum
+  2001:db8:4a:7:ed34:caa4:15ad:d464 ipv6_slash64_enum
+  2001:db8:4a:7:eeed:f128:70c1:56a4 ipv6_slash64_enum
+  2001:db8:4a:7:ef0d:edf2:3f3f:d722 ipv6_slash64_enum
+  2001:db8:4a:7:f172:b450:3b08:9594 ipv6_slash64_enum
+  2001:db8:4a:7:f7b2:f16a:e482:57b2 ipv6_slash64_enum
+  2001:db8:4a:7:f844:4848:6cce:2686 ipv6_slash64_enum
+  203.0.113.71     stuffing_form
+
+VERDICT: PASS - caught 9/51 malicious clients (recall 0.18, gate 0.00), 1 false positive(s), precision 0.90, F1 0.30
