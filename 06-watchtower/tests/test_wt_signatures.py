@@ -316,3 +316,73 @@ def test_padding_bypass(payload, ua, rule):
     # payload at the end of a padded field, and at the start
     assert rule in ids(run(ev("/i?pad=" + pad + "&" + payload, ua=(pad + ua) or BROWSER)))
     assert rule in ids(run(ev("/i?" + payload + "&pad=" + pad, ua=(ua + pad) or BROWSER)))
+
+
+# ---- phase 5: 2xx escalation needs an informative baseline -------------------
+
+def evb(target, status, size, secs=0, ip="192.0.2.10", method="GET"):
+    e = ev(target, status=status, ip=ip, secs=secs, method=method)
+    return LogEvent(**{**e.__dict__, "bytes_sent": size})
+
+
+def benign_search(n=50, size=5000, status=200, path="/search"):
+    return [evb(f"{path}?q=term{i}", status, size, secs=i, ip=f"198.51.100.{i % 200 + 1}") for i in range(n)]
+
+
+def test_always_200_endpoint_same_size_not_escalated():
+    a = run(*benign_search(), evb("/search?q=1+union+select+1,2", 200, 5000, secs=100))
+    assert len(a) == 1 and a[0].severity == "high"
+    assert "not treated as success" in a[0].detail
+    assert "/search answers 2xx to ordinary requests (50 baseline, size ~5000 bytes)" in a[0].detail
+    assert "were answered with HTTP 2xx" not in a[0].detail
+
+
+def test_always_200_endpoint_much_larger_response_escalates():
+    a = run(*benign_search(), evb("/search?q=1+union+select+1,2", 200, 90000, secs=100))
+    assert a[0].severity == "critical"
+    assert "request(s) were answered with HTTP 2xx" in a[0].detail
+
+
+def test_small_deviation_not_escalated():
+    # 50% relative but under 200 bytes absolute, and +10% overall: quiet
+    a = run(*benign_search(size=5000), evb("/search?q=1+union+select+1,2", 200, 5400, secs=100))
+    assert a[0].severity == "high"
+
+
+def test_no_baseline_escalates_as_before():
+    a = run(evb("/search?q=1+union+select+1,2", 200, 5000), *benign_search(n=4, path="/other"))
+    assert a[0].severity == "critical"
+    assert "request(s) were answered with HTTP 2xx" in a[0].detail
+
+
+def test_endpoint_with_few_baseline_events_escalates():
+    a = run(*benign_search(n=4), evb("/search?q=1+union+select+1,2", 200, 5000, secs=100))
+    assert a[0].severity == "critical"
+
+
+@pytest.mark.parametrize("status", [302, 403])
+def test_endpoint_normally_not_2xx_escalates(status):
+    a = run(*benign_search(status=status, size=0), evb("/search?q=1+union+select+1,2", 200, 5000, secs=100))
+    assert a[0].severity == "critical"
+
+
+def test_baseline_is_per_method_and_path():
+    # baseline exists for /search but the attack hits /other: no baseline there
+    a = run(*benign_search(), evb("/other?q=1+union+select+1,2", 200, 5000, secs=100))
+    assert a[0].severity == "critical"
+    a = run(*benign_search(), evb("/search?q=1+union+select+1,2", 200, 5000, secs=100, method="POST"))
+    assert a[0].severity == "critical"
+
+
+def test_baseline_excludes_signature_matching_events():
+    # 50 attack hits answered 200 do not become the "normal" for the endpoint
+    a = run(*[evb(f"/s?q={i}+or+1=1", 200, 5000, secs=i) for i in range(50)])
+    assert a[0].severity == "critical"
+
+
+def test_baseline_memory_bounded():
+    det = SignatureDetector()
+    for i in range(2000):
+        det.feed(evb(f"/search?q=t{i}", 200, i))
+    base = next(iter(det._baselines.values()))
+    assert base.count == 2000 and len(base.sizes) == 200

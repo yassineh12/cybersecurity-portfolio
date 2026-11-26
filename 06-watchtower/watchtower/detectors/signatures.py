@@ -18,7 +18,9 @@ to ``RULES``. Two cross-cutting ideas matter more than any single regex:
 
 from __future__ import annotations
 
+import random
 import re
+import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 from urllib.parse import unquote_plus
@@ -265,7 +267,57 @@ class _State:
     count: int = 0
     evidence: list[str] = field(default_factory=list)
     patterns: list[str] = field(default_factory=list)
-    success_2xx: int = 0
+    # 2xx answers to exploit-class hits, judged at flush against the baseline:
+    # (endpoint, response size). Bounded so memory stays fixed.
+    hits_2xx: list = field(default_factory=list)
+    success_2xx: int = 0          # all 2xx exploit hits, including unstored ones
+
+
+Endpoint = tuple  # (method, path without query)
+
+# Baseline knobs: what "ordinary traffic to this endpoint" looks like.
+BASELINE_MIN_EVENTS = 5       # fewer than this: no evidence of an always-200 endpoint
+BASELINE_SAMPLE = 200         # reservoir size for 2xx response sizes
+BASELINE_MAX_ENDPOINTS = 20000
+MAX_2XX_HITS = 200
+SIZE_REL = 0.5                # size must differ from median by more than 50% ...
+SIZE_ABS = 200                # ... and by more than this many bytes
+
+
+@dataclass
+class _Baseline:
+    """What ordinary (signature-free) requests to one endpoint look like.
+
+    A search box answers 200 to everything, so a 2xx to an injection there
+    proves nothing. We learn each endpoint's normal 2xx share and size.
+    """
+    count: int = 0
+    ok: int = 0
+    sizes: list = field(default_factory=list)   # reservoir of 2xx sizes
+
+    def add(self, status: int, size: int, rng: random.Random) -> None:
+        self.count += 1
+        if 200 <= status < 300:
+            self.ok += 1
+            if len(self.sizes) < BASELINE_SAMPLE:
+                self.sizes.append(size)
+            else:  # reservoir sampling: uniform sample in fixed memory
+                j = rng.randrange(self.ok)
+                if j < BASELINE_SAMPLE:
+                    self.sizes[j] = size
+
+    def median(self) -> float:
+        return float(statistics.median(self.sizes)) if self.sizes else 0.0
+
+    def informative(self, size: int) -> bool:
+        """Does a 2xx of this size tell us the payload had an effect?"""
+        if self.count < BASELINE_MIN_EVENTS:
+            return True
+        if self.ok / self.count < 0.5:
+            return True
+        med = self.median()
+        dev = abs(size - med)
+        return dev > SIZE_REL * med and dev > SIZE_ABS
 
 
 class SignatureDetector:
@@ -280,6 +332,8 @@ class SignatureDetector:
     def __init__(self, max_evidence: int = 5):
         self.max_evidence = max(0, int(max_evidence))
         self._states: dict[tuple[str, str], _State] = {}
+        self._baselines: dict[Endpoint, _Baseline] = {}
+        self._rng = random.Random(0)
 
     def feed(self, event: LogEvent) -> list[Alert]:
         try:
@@ -288,11 +342,30 @@ class SignatureDetector:
             pass  # a detector must never raise on odd input
         return []
 
+    @staticmethod
+    def _endpoint(event: LogEvent) -> Endpoint:
+        return (str(event.method), str(event.path))
+
+    def _learn(self, event: LogEvent) -> None:
+        """Record a signature-free request in its endpoint's baseline."""
+        if not isinstance(event.status, int):
+            return
+        ep = self._endpoint(event)
+        base = self._baselines.get(ep)
+        if base is None:
+            if len(self._baselines) >= BASELINE_MAX_ENDPOINTS:
+                return
+            base = self._baselines[ep] = _Baseline()
+        size = event.bytes_sent if isinstance(event.bytes_sent, int) else 0
+        base.add(event.status, size, self._rng)
+
     def _ingest(self, event: LogEvent) -> None:
+        matched = False
         for rule in RULES:
             hits = match_rule(rule, event)
             if not hits:
                 continue
+            matched = True
             key = (event.client_ip, rule.rule_id)
             st = self._states.get(key)
             if st is None:
@@ -307,10 +380,27 @@ class SignatureDetector:
                     st.patterns.append(h)
             if rule.exploit and isinstance(event.status, int) and 200 <= event.status < 300:
                 st.success_2xx += 1
+                if len(st.hits_2xx) < MAX_2XX_HITS:
+                    size = event.bytes_sent if isinstance(event.bytes_sent, int) else 0
+                    st.hits_2xx.append((self._endpoint(event), size))
+        if not matched:
+            self._learn(event)
 
     @staticmethod
     def _synth_line(event: LogEvent) -> str:
         return f"{event.client_ip} {event.method} {event.target} {event.status}"
+
+    def _judge_2xx(self, st: _State):
+        """Count 2xx hits that are informative; return one example of the rest."""
+        informative = 0
+        quiet = None
+        for ep, size in st.hits_2xx:
+            base = self._baselines.get(ep)
+            if base is None or base.informative(size):
+                informative += 1
+            elif quiet is None:
+                quiet = (ep, base)
+        return informative, quiet
 
     def flush(self) -> list[Alert]:
         by_id = {r.rule_id: r for r in RULES}
@@ -320,16 +410,26 @@ class SignatureDetector:
             severity = rule.severity
             detail = f"{st.count} matching request(s); patterns: {', '.join(st.patterns)}."
             if st.success_2xx:
-                severity = escalate(severity)
-                detail += (
-                    f" {st.success_2xx} request(s) were answered with HTTP 2xx, so the "
-                    f"attempt may have succeeded; severity raised to {severity}."
-                )
+                informative, quiet = self._judge_2xx(st)
+                if informative:
+                    severity = escalate(severity)
+                    detail += (
+                        f" {informative} request(s) were answered with HTTP 2xx, so the "
+                        f"attempt may have succeeded; severity raised to {severity}."
+                    )
+                if quiet:
+                    (ep, base) = quiet
+                    detail += (
+                        f" answered 2xx, but {ep[1]} answers 2xx to ordinary requests "
+                        f"({base.count} baseline, size ~{int(base.median())} bytes), "
+                        f"so not treated as success."
+                    )
             alerts.append(Alert(
                 rule_id=rule_id, title=rule.title, severity=severity, client_ip=ip,
                 first_seen=st.first, last_seen=st.last, event_count=st.count,
                 technique=rule.technique, evidence=list(st.evidence), detail=detail,
             ))
         self._states.clear()
+        self._baselines.clear()
         alerts.sort(key=lambda a: (a.first_seen, a.rule_id, a.client_ip))
         return alerts
