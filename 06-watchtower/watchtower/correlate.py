@@ -31,6 +31,7 @@ answered 200 (critical before and after) gets the bonus instead and scores 100.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from collections import defaultdict
 from typing import Any
@@ -97,6 +98,8 @@ _STATUS_RE = re.compile(r'"\s+(\d{3})\s+(?:\d+|-)|"status"\s*:\s*"?(\d{3})')
 _UA_RE = re.compile(r'"http_user_agent"\s*:\s*"((?:[^"\\]|\\.)*)"|"([^"]*)"\s*$')
 # "3 request(s) were answered with HTTP 2xx": the true count, evidence is capped.
 _DETAIL_COUNT_RE = re.compile(r"(\d+)[^.\d]*\b2xx\b", re.IGNORECASE)
+# Network-channel alerts: "distributed across 6 addresses in 2001:db8::/64: ..."
+_DISTRIBUTED_RE = re.compile(r"distributed across (\d+) addresses", re.IGNORECASE)
 # A detail that reports a 2xx answer ("got a 2xx", "answered 200"), not any 2nn number.
 _DETAIL_2XX_RE = re.compile(r"\b2xx\b|(?:status|answered|returned|response|code)\D{0,3}2\d\d\b",
                             re.IGNORECASE)
@@ -107,6 +110,13 @@ _DETAIL_2XX_RE = re.compile(r"\b2xx\b|(?:status|answered|returned|response|code)
 def correlate(alerts: list[Alert], scoring: dict[str, Any] | None = None) -> list[Incident]:
     """Group alerts by client into incidents, sorted by score (highest first).
 
+    A "client" is usually one address, but the behaviour detectors' network
+    channel reports a whole network ("2001:db8:abcd:12::/64") when an attacker
+    spreads activity across many addresses in it. Network incidents are kept
+    separate from per-address incidents inside them: merging would inflate the
+    single address with its neighbours' activity (or hide it). Instead the
+    per-address summary points at the network incident.
+
     Ties are broken by severity, then earliest first_seen, then client IP, so
     the output is deterministic for the same input.
     """
@@ -115,9 +125,43 @@ def correlate(alerts: list[Alert], scoring: dict[str, Any] | None = None) -> lis
     for alert in alerts:
         by_client[alert.client_ip].append(alert)
     incidents = [_build_incident(ip, group, weights) for ip, group in by_client.items()]
+    _link_to_networks(incidents)
     incidents.sort(key=lambda i: (-i.score, -SEVERITY_RANK.get(i.severity, 0),
                                   i.first_seen, i.client_ip))
     return incidents
+
+
+def as_network(client: str) -> ipaddress.IPv4Network | ipaddress.IPv6Network | None:
+    """The network a network-level incident covers; None for a single address."""
+    if "/" not in client:
+        return None
+    try:
+        return ipaddress.ip_network(client.strip(), strict=False)
+    except ValueError:
+        return None
+
+
+def is_network(client: str) -> bool:
+    return as_network(client) is not None
+
+
+def _link_to_networks(incidents: list[Incident]) -> None:
+    """Point per-address incidents at network incidents whose range holds them."""
+    networks = [(as_network(i.client_ip), i.client_ip) for i in incidents]
+    networks = [(net, label) for net, label in networks if net is not None]
+    if not networks:
+        return
+    for inc in incidents:
+        if is_network(inc.client_ip):
+            continue
+        try:
+            addr = ipaddress.ip_address(inc.client_ip.strip())
+        except ValueError:
+            continue
+        related = sorted(label for net, label in networks if addr in net)
+        if related:
+            inc.summary = (inc.summary[:-1] + "; related to network incident "
+                           + ", ".join(related) + ".")
 
 
 def stage_of(alert: Alert) -> str | None:
@@ -260,9 +304,10 @@ def summarize(ip: str, alerts: list[Alert]) -> str:
         phrase = _phrase(alert)
         if phrase not in phrases:
             phrases.append(phrase)
+    subject = _subject(ip, ordered)
     if not phrases:
-        return f"{ip} triggered no alerts."
-    sentence = f"{ip} {_join_then(phrases)}"
+        return f"{subject} triggered no alerts."
+    sentence = f"{subject} {_join_then(phrases)}"
 
     tails = []
     success = _success_clause(ordered)
@@ -273,6 +318,15 @@ def summarize(ip: str, alerts: list[Alert]) -> str:
     if tails:
         sentence += "; " + "; ".join(tails)
     return sentence + "."
+
+
+def _subject(client: str, alerts: list[Alert]) -> str:
+    """ "203.0.113.5", or "Clients in 2001:db8::/64 (6 addresses)" for a network."""
+    if not is_network(client):
+        return client
+    counts = [int(m.group(1)) for a in alerts
+              if (m := _DISTRIBUTED_RE.search(a.detail or ""))]
+    return f"Clients in {client} ({max(counts)} addresses)" if counts else f"Clients in {client}"
 
 
 def _phrase(alert: Alert) -> str:

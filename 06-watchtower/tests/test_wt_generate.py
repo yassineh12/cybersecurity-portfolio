@@ -14,7 +14,7 @@ COMBINED = re.compile(
     r'^(\S+) \S+ \S+ \[(\d{2}/[A-Z][a-z]{2}/\d{4}:\d{2}:\d{2}:\d{2} \+0000)\] '
     r'"([A-Z]+) (\S+) HTTP/1\.[01]" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)"$'
 )
-NETS = [ipaddress.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")]
+NETS = [ipaddress.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32")]
 
 
 def parse_ts(text):
@@ -112,7 +112,8 @@ def test_cli_writes_files(tmp_path):
 
 
 HARD = ("stealth_enum", "wp_bruteforce", "bruteforce_slow_success", "sqli_evasive", "traversal_encoded",
-        "lookalike_searcher", "admin_user", "downloader", "office_nat")
+        "lookalike_searcher", "admin_user", "downloader", "office_nat",
+        "ipv6_rotating_enum", "ipv6_users", "ipv6_household")
 
 
 def test_hard_profile_scenarios_labelled_and_present():
@@ -157,3 +158,22 @@ def test_many_hours_no_ip_overflow_or_collision():
         mal = {r["client_ip"] for r in labels if r["label"] == "malicious"}
         benign_scen = {r["client_ip"] for r in labels if r["label"] == "benign"}
         assert not mal & benign_scen
+
+
+def test_ipv6_scenarios():
+    lines, labels = generate(7, 6, profile="hard")
+    rot = [r["client_ip"] for r in labels if r["scenario"] == "ipv6_rotating_enum"]
+    assert len(rot) == 200 and len(set(rot)) == 200
+    bad = ipaddress.ip_network("2001:db8:bad:1::/64")
+    assert all(ipaddress.ip_address(i) in bad for i in rot)
+    users = [ipaddress.ip_address(r["client_ip"]) for r in labels if r["scenario"] == "ipv6_users"]
+    assert len(users) == 8
+    assert all(u in ipaddress.ip_network("2001:db8:100::/48") for u in users)
+    assert len({int(u) >> 64 for u in users}) == 8
+    house = [r["client_ip"] for r in labels if r["scenario"] == "ipv6_household"]
+    assert len(house) == 4
+    assert all(ipaddress.ip_address(i) in ipaddress.ip_network("2001:db8:200:5::/64") for i in house)
+    assert all(r["label"] == "benign" for r in labels if r["scenario"].startswith("ipv6_") and r["scenario"] != "ipv6_rotating_enum")
+    n404 = sum(1 for ln in lines if ln.split()[0] in house and COMBINED.match(ln).group(5) == "404")
+    assert 6 <= n404 <= 8
+    assert not any(":" in ln.split()[0] for ln in generate(7, 6)[0])

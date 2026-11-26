@@ -205,3 +205,39 @@ def test_brute_force_wording_depends_on_explicit_failures():
     assert summarize(IP, [agnostic]) == f"{IP} brute-forced a login (12 login attempts)."
     assert summarize(IP, [plain]) == f"{IP} brute-forced a login (12 login attempts)."
     assert summarize(IP, [explicit]) == f"{IP} brute-forced a login (12 failed attempts)."
+
+
+
+# --- network-level incidents ---
+
+NET = "2001:db8:abcd:12::/64"
+
+
+def test_network_incident_summary_uses_address_count_from_detail():
+    a = alert("BEH-404-BURST", "medium", ip=NET, count=64,
+              detail=f"distributed across 6 addresses in {NET}: 64 miss responses (404/403/410)")
+    (inc,) = correlate([a])
+    assert inc.client_ip == NET
+    assert inc.summary == f"Clients in {NET} (6 addresses) enumerated paths (64 requests answered 404/403/410)."
+
+
+def test_network_incident_without_count_in_detail():
+    assert summarize(NET, [alert("BEH-RATE-SPIKE", "low", ip=NET, count=2)]).startswith(
+        f"Clients in {NET} flooded the site")
+
+
+def test_network_and_member_incidents_stay_separate_but_linked():
+    member, outsider, v4 = "2001:db8:abcd:12::5", "2001:db8:abcd:99::5", "203.0.113.5"
+    incs = correlate([
+        alert("BEH-404-BURST", "medium", ip=NET, detail=f"distributed across 5 addresses in {NET}: x"),
+        alert("SIG-SQLI", "high", ip=member),
+        alert("SIG-XSS", "medium", ip=outsider),
+        alert("SIG-XSS", "medium", ip=v4),
+    ])
+    by_ip = {i.client_ip: i for i in incs}
+    assert set(by_ip) == {NET, member, outsider, v4}
+    assert [a.rule_id for a in by_ip[member].alerts] == ["SIG-SQLI"]          # not merged
+    assert by_ip[member].summary == f"{member} attempted SQL injection; related to network incident {NET}."
+    assert "related to" not in by_ip[outsider].summary
+    assert "related to" not in by_ip[v4].summary
+    assert "related to" not in by_ip[NET].summary

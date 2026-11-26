@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-05T04:02:38.946873+00:00",
+  "generated_at": "2026-11-26T16:09:50.833767+00:00",
   "stats": {
-    "lines_read": 2612,
-    "lines_parsed": 2612,
+    "lines_read": 3061,
+    "lines_parsed": 3061,
     "lines_malformed": 0,
     "events_allowlisted": 0,
-    "unique_clients": 48,
+    "unique_clients": 260,
     "time_start": "2026-11-01T00:00:00+00:00",
     "time_end": "2026-11-01T05:59:30+00:00",
     "files": [
       "examples/hard_access.log"
     ],
     "alerts_by_rule": {
-      "BEH-404-BURST": 2,
+      "BEH-404-BURST": 3,
       "BEH-BRUTE-FORCE": 3,
       "BEH-BRUTE-SUCCESS": 2,
       "SIG-LOG4SHELL": 1,
@@ -23,11 +23,12 @@
     },
     "incidents_by_severity": {
       "low": 0,
-      "medium": 4,
+      "medium": 5,
       "high": 2,
       "critical": 5
     },
-    "read_errors": []
+    "read_errors": [],
+    "network_incidents": 1
   },
   "incidents": [
     {
@@ -458,6 +459,37 @@
           "detail": "10 login POSTs within 300s (threshold 10); 0 explicit 401/403 failures; status-agnostic; lower confidence."
         }
       ]
+    },
+    {
+      "client_ip": "2001:db8:bad:1::/64",
+      "score": 35,
+      "severity": "medium",
+      "stages": [
+        "recon"
+      ],
+      "first_seen": "2026-11-01T01:23:58+00:00",
+      "last_seen": "2026-11-01T01:25:37+00:00",
+      "summary": "Clients in 2001:db8:bad:1::/64 (20 addresses) enumerated paths (200 requests answered 404/403/410).",
+      "alerts": [
+        {
+          "rule_id": "BEH-404-BURST",
+          "title": "Burst of 404/403/410 responses (path enumeration)",
+          "severity": "medium",
+          "client_ip": "2001:db8:bad:1::/64",
+          "first_seen": "2026-11-01T01:23:58+00:00",
+          "last_seen": "2026-11-01T01:25:37+00:00",
+          "event_count": 200,
+          "technique": "T1595.003",
+          "evidence": [
+            "2001:db8:bad:1:253c:5089:e2e:a1ef - - [01/Nov/2026:01:24:05 +0000] \"GET /files/ HTTP/1.1\" 404 533 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:b174:c9f2:4600:6fdd - - [01/Nov/2026:01:24:06 +0000] \"GET /logs/ HTTP/1.1\" 404 213 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:57e2:ccd5:58f1:37c8 - - [01/Nov/2026:01:24:06 +0000] \"GET /data/ HTTP/1.1\" 404 483 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:d4f6:2f4e:ec88:eca5 - - [01/Nov/2026:01:24:06 +0000] \"GET /web/ HTTP/1.1\" 404 383 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:cfe4:1c99:a70f:1071 - - [01/Nov/2026:01:24:06 +0000] \"GET /site/ HTTP/1.1\" 404 172 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "distributed across 20 addresses in 2001:db8:bad:1::/64: 20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
+        }
+      ]
     }
   ],
   "alerts": [
@@ -532,6 +564,24 @@
         "203.0.113.22 - - [01/Nov/2026:01:01:11 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2509 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
       ],
       "detail": "10 login POSTs within 300s (threshold 10); 0 explicit 401/403 failures; status-agnostic; lower confidence."
+    },
+    {
+      "rule_id": "BEH-404-BURST",
+      "title": "Burst of 404/403/410 responses (path enumeration)",
+      "severity": "medium",
+      "client_ip": "2001:db8:bad:1::/64",
+      "first_seen": "2026-11-01T01:23:58+00:00",
+      "last_seen": "2026-11-01T01:25:37+00:00",
+      "event_count": 200,
+      "technique": "T1595.003",
+      "evidence": [
+        "2001:db8:bad:1:253c:5089:e2e:a1ef - - [01/Nov/2026:01:24:05 +0000] \"GET /files/ HTTP/1.1\" 404 533 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:b174:c9f2:4600:6fdd - - [01/Nov/2026:01:24:06 +0000] \"GET /logs/ HTTP/1.1\" 404 213 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:57e2:ccd5:58f1:37c8 - - [01/Nov/2026:01:24:06 +0000] \"GET /data/ HTTP/1.1\" 404 483 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:d4f6:2f4e:ec88:eca5 - - [01/Nov/2026:01:24:06 +0000] \"GET /web/ HTTP/1.1\" 404 383 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:cfe4:1c99:a70f:1071 - - [01/Nov/2026:01:24:06 +0000] \"GET /site/ HTTP/1.1\" 404 172 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "distributed across 20 addresses in 2001:db8:bad:1::/64: 20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
     },
     {
       "rule_id": "SIG-TRAVERSAL",

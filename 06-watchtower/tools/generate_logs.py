@@ -4,7 +4,8 @@ THIS PRODUCES FAKE DATA. Every line, client and "attack" below is invented so
 that detectors can be measured against a known ground truth. The script only
 writes text to local files; it never opens a network connection and never
 contacts any host named in the log text. All IP addresses come from the RFC
-5737 documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24),
+5737 documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) and, in the hard profile,
+IPv6 2001:db8::/32 (RFC 3849),
 which are reserved and never routed on the real internet.
 
 Why it exists: a detector is only trustworthy if you know what it should find.
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import ipaddress
 import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -328,8 +330,55 @@ def _office_nat(log):
     log.label(ip, "benign", "office_nat")
 
 
+def _v6(prefix: str, rng) -> str:
+    """Random host inside an IPv6 /64 (documentation range 2001:db8::/32)."""
+    net = ipaddress.IPv6Network(prefix)
+    return ipaddress.IPv6Address(int(net.network_address) + rng.getrandbits(64)).compressed
+
+
+def _ipv6_rotating_enum(log):
+    rng = log.rng
+    ts = log.at(0.1, 0.7, room=400)
+    used = []
+    for n in range(200):
+        ip = _v6("2001:db8:bad:1::/64", rng)
+        while ip in used:
+            ip = _v6("2001:db8:bad:1::/64", rng)
+        used.append(ip)
+        log.add(ts, ip, "GET", f"/{WORDLIST[n % len(WORDLIST)]}{n // len(WORDLIST) or ''}/", 404, ua=BROWSER)
+        ts += timedelta(milliseconds=rng.randint(500, 1500))
+        ts = ts.replace(microsecond=0)
+    for ip in used:
+        log.label(ip, "malicious", "ipv6_rotating_enum")
+
+
+def _ipv6_users(log):
+    rng = log.rng
+    for i in range(8):
+        ip = f"2001:db8:100:{i + 1:x}::{rng.randint(2, 0xffff):x}"
+        ua = BROWSER_UAS[i % len(BROWSER_UAS)]
+        _benign_user(log, ip, ua, rng.randint(1, 3))
+        if i % 3 == 0:
+            log.add(log.at(0.1, 0.9, room=60), ip, "GET", rng.choice(DEAD_LINKS), 404, ref=SITE + "/", ua=ua)
+        log.label(ip, "benign", "ipv6_users")
+
+
+def _ipv6_household(log):
+    rng = log.rng
+    ips = [f"2001:db8:200:5::{n:x}" for n in rng.sample(range(2, 0xffff), 4)]
+    for ip, ua in zip(ips, BROWSER_UAS):
+        _benign_user(log, ip, ua, 1)
+        log.label(ip, "benign", "ipv6_household")
+    ts = log.at(0.2, 0.8, room=200)
+    for n in range(6):
+        ip = ips[n % 4]
+        log.add(ts, ip, "GET", f"/static/missing-{n}.png", 404, ref=SITE + "/", ua=BROWSER_UAS[n % 4])
+        ts += timedelta(seconds=rng.randint(4, 9))
+
+
 HARD_SCENARIOS = (_stealth_enum, _wp_bruteforce, _slow_bruteforce, _sqli_evasive, _traversal_encoded,
-                  _lookalike, _admin_user, _downloader, _office_nat)
+                  _lookalike, _admin_user, _downloader, _office_nat,
+                  _ipv6_rotating_enum, _ipv6_users, _ipv6_household)
 
 
 def generate(seed: int, hours: float, start: datetime | None = None,

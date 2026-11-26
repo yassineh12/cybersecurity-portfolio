@@ -1,16 +1,16 @@
 # WATCHTOWER Threat Detection Report
 
-Generated: 2026-11-05 04:02:38 UTC
+Generated: 2026-11-26 16:09:50 UTC
 
 ## Scan summary
 
 - Files: examples/hard\_access.log
 - Time range: 2026-11-01T00:00:00+00:00 to 2026-11-01T05:59:30+00:00
-- Lines read: 2612
-- Lines parsed: 2612
+- Lines read: 3061
+- Lines parsed: 3061
 - Lines malformed: 0
-- Unique clients: 48
-- Alerts: 16
+- Unique clients: 260
+- Alerts: 17
 
 ## Incidents by severity
 
@@ -18,7 +18,7 @@ Generated: 2026-11-05 04:02:38 UTC
 |---|---|
 | critical | 5 |
 | high | 2 |
-| medium | 4 |
+| medium | 5 |
 | low | 0 |
 
 ## Incidents
@@ -383,3 +383,31 @@ Recommended actions:
 
 - Block or rate-limit 203.0.113.22 at the WAF or firewall.
 - Enforce account lockout or MFA on the targeted login endpoint and check for any successful logins from this client.
+
+### 12. 2001:db8:bad:1::/64 (medium, score 35)
+
+- Client: 2001:db8:bad:1::/64
+- Score: 35/100
+- Severity: medium
+- Stages: recon
+- Window: 2026-11-01 01:23:58 UTC to 2026-11-01 01:25:37 UTC
+- Summary: Clients in 2001:db8:bad:1::/64 \(20 addresses\) enumerated paths \(200 requests answered 404/403/410\).
+
+| Rule | Severity | ATT&CK | Count | First seen | Last seen |
+|---|---|---|---|---|---|
+| BEH-404-BURST | medium | [T1595.003](https://attack.mitre.org/techniques/T1595/003/) | 200 | 2026-11-01 01:23:58 UTC | 2026-11-01 01:25:37 UTC |
+
+**BEH-404-BURST**: Burst of 404/403/410 responses \(path enumeration\) (distributed across 20 addresses in 2001:db8:bad:1::/64: 20 miss responses \(404/403/410\) within 60s \(threshold 20\); consistent with directory guessing.)
+
+```text
+2001:db8:bad:1:253c:5089:e2e:a1ef - - [01/Nov/2026:01:24:05 +0000] "GET /files/ HTTP/1.1" 404 533 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+2001:db8:bad:1:b174:c9f2:4600:6fdd - - [01/Nov/2026:01:24:06 +0000] "GET /logs/ HTTP/1.1" 404 213 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+2001:db8:bad:1:57e2:ccd5:58f1:37c8 - - [01/Nov/2026:01:24:06 +0000] "GET /data/ HTTP/1.1" 404 483 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+2001:db8:bad:1:d4f6:2f4e:ec88:eca5 - - [01/Nov/2026:01:24:06 +0000] "GET /web/ HTTP/1.1" 404 383 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+2001:db8:bad:1:cfe4:1c99:a70f:1071 - - [01/Nov/2026:01:24:06 +0000] "GET /site/ HTTP/1.1" 404 172 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+```
+
+Recommended actions:
+
+- Block or rate-limit 2001:db8:bad:1::/64 at the WAF or firewall.
+- Make sure sensitive files and paths probed during recon are not exposed.

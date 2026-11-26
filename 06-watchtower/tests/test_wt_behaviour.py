@@ -291,3 +291,88 @@ def test_302_rapid_repost_counts_as_failures():
     evs = [post(i * 3, 302, path="/login") for i in range(15)]
     alerts = run(BruteForceDetector(10, 300), evs)
     assert [(a.rule_id, a.severity) for a in alerts] == [("BEH-BRUTE-FORCE", "medium")]
+
+
+# ---- network-level (IPv6 /64) channel ---------------------------------------
+
+def v6(i, net="2001:db8:abcd:12"):
+    return f"{net}::{i + 1:x}"
+
+
+def test_net_enum_ipv6_64_rotation():
+    evs = [ev(i * 0.1, ip=v6(i)) for i in range(400)]  # a new address each time
+    alerts = run(EnumerationDetector(), evs)
+    assert len(alerts) == 1
+    a = alerts[0]
+    assert a.rule_id == "BEH-404-BURST" and a.client_ip == "2001:db8:abcd:12::/64"
+    assert a.detail.startswith("distributed across 20 addresses in 2001:db8:abcd:12::/64: ")
+    assert a.event_count == 400 and len(a.evidence) == 5
+
+
+def test_net_enum_ipv4_off_by_default_and_opt_in():
+    evs = [ev(i * 0.1, ip=f"192.0.2.{i % 250 + 1}") for i in range(400)]
+    assert run(EnumerationDetector(), evs) == []
+    alerts = run(EnumerationDetector(ipv4_prefix=24), evs)
+    assert [a.client_ip for a in alerts] == ["192.0.2.0/24"]
+
+
+def test_net_single_ipv6_client_only_per_client_alert():
+    evs = [ev(i * 0.1, ip=v6(0)) for i in range(40)]
+    alerts = run(EnumerationDetector(), evs)
+    assert [a.client_ip for a in alerts] == [v6(0)]
+
+
+def test_net_below_min_distinct_raises_nothing():
+    evs = [ev(i * 0.1, ip=v6(i % 3)) for i in range(30)]  # 10 each, 30 total, 3 addresses
+    assert run(EnumerationDetector(), evs) == []
+    # raising min_distinct is honoured, lowering it fires
+    assert len(run(EnumerationDetector(min_distinct=3), evs)) == 1
+
+
+def test_net_lone_heavy_address_suppresses_network_alert():
+    evs = [ev(i * 0.1, ip=v6(0)) for i in range(25)]  # crosses alone
+    evs += [ev(3 + i * 0.1, ip=v6(10 + i)) for i in range(10)]
+    alerts = run(EnumerationDetector(), evs)
+    assert [a.client_ip for a in alerts] == [v6(0)]
+
+
+def test_net_brute_force_spread_over_64():
+    evs = [post(i * 0.5, 401, path="/login", ip=v6(i)) for i in range(40)]
+    alerts = run(BruteForceDetector(), evs)
+    assert [(a.rule_id, a.severity, a.client_ip) for a in alerts] == \
+        [("BEH-BRUTE-FORCE", "high", "2001:db8:abcd:12::/64")]
+    assert "distributed across" in alerts[0].detail
+    assert "status-agnostic" not in alerts[0].detail
+
+
+def test_net_rate_spike_spread_over_64():
+    evs = [ev(i * 0.05, ip=v6(i), status=200) for i in range(400)]
+    alerts = run(RateDetector(), evs)
+    assert [(a.rule_id, a.client_ip) for a in alerts] == \
+        [("BEH-RATE-SPIKE", "2001:db8:abcd:12::/64")]
+
+
+def test_net_ipv4_mapped_treated_as_ipv4():
+    evs = [ev(i * 0.1, ip=f"::ffff:192.0.2.{i % 250 + 1}") for i in range(400)]
+    assert run(EnumerationDetector(), evs) == []      # IPv4 grouping off
+    alerts = run(EnumerationDetector(ipv4_prefix=24), evs)
+    assert [a.client_ip for a in alerts] == ["192.0.2.0/24"]
+
+
+def test_net_state_cleanup_and_prefix_off():
+    det = EnumerationDetector()
+    for i in range(3000):
+        det.feed(ev(0, ip=f"2001:db8:{i:x}::1"))
+    assert len(det._nfast.wins) == 3000
+    for i in range(1100):
+        det.feed(ev(1000 + i, ip="192.0.2.99"))
+    assert len(det._nfast.wins) == 0
+    assert run(EnumerationDetector(ipv6_prefix=None),
+               [ev(i * 0.1, ip=v6(i)) for i in range(100)]) == []
+
+
+def test_net_odd_addresses_ignored():
+    det = EnumerationDetector(ipv4_prefix=24)
+    for ip in ("", "-", "not-an-ip", "fe80::1%eth0", "999.1.1.1"):
+        det.feed(ev(0, ip=ip))
+    assert det.flush() == []

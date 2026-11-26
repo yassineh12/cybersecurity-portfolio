@@ -42,6 +42,12 @@ then one of:
 Flagged IPs absent from the labels are reported as *unlabelled* and kept out
 of the maths, since we cannot say whether they were right.
 
+Some incidents name a network rather than one IP (an IPv6 attacker rotating
+addresses inside a /64). Such an incident flags every labelled malicious
+client inside it. If it contains no malicious client, each benign client
+inside it is a false positive, shown "via" the network; if it contains no
+labelled client at all it is reported as unlabelled.
+
 Usage::
 
     python tools/evaluate.py examples/sample_access.log examples/sample_labels.csv
@@ -56,6 +62,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import ipaddress
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -96,8 +103,10 @@ class EvalResult:
     false_positives: list[tuple[str, str, tuple[str, ...]]] = field(default_factory=list)
     # (ip, scenario) for malicious clients we did not flag
     missed: list[tuple[str, str]] = field(default_factory=list)
-    # flagged clients absent from the labels: (ip, rule_ids)
+    # flagged clients (or networks) covering no labelled client: (ip_or_net, rule_ids)
     unlabelled_flagged: list[tuple[str, tuple[str, ...]]] = field(default_factory=list)
+    # labelled ip -> network incident that flagged it (only when no exact-IP incident did)
+    via: dict[str, str] = field(default_factory=dict)
     min_severity: str | None = None
     labels_skipped: int = 0
 
@@ -181,13 +190,70 @@ def flagged_clients(result: ScanResult, min_severity: str | None = None) -> dict
     return {ip: tuple(sorted(ids)) for ip, ids in rules.items()}
 
 
+def _as_network(key: str):
+    """Return an ip_network when an incident key is a CIDR, else None.
+
+    Behaviour detectors may group an IPv6 attacker who rotates addresses
+    inside one /64 into a single incident keyed by the network. Plain IPs
+    (and anything unparseable) stay exact-match keys.
+    """
+    if "/" not in key:
+        return None
+    try:
+        return ipaddress.ip_network(key.strip(), strict=False)
+    except ValueError:
+        return None
+
+
+def _as_address(ip: str):
+    try:
+        return ipaddress.ip_address(ip.strip())
+    except ValueError:
+        return None
+
+
+def _containing(addr, networks) -> list[str]:
+    """Network keys (sorted, most specific first) that contain addr."""
+    if addr is None:
+        return []
+    hits = [(net.prefixlen, key) for key, net in networks.items()
+            if addr.version == net.version and addr in net]
+    return [key for _, key in sorted(hits, key=lambda h: (-h[0], h[1]))]
+
+
 def score(labels: dict[str, Label], flagged: dict[str, tuple[str, ...]],
           min_severity: str | None = None) -> EvalResult:
-    """Build the confusion matrix from ground truth and the flagged set."""
+    """Build the confusion matrix from ground truth and the flagged set.
+
+    Exact-IP incidents flag that IP. A network incident (key like
+    ``2001:db8:abcd:12::/64``) flags every labelled malicious client inside
+    it. It only counts against benign clients inside it when it contains no
+    labelled malicious client: then the whole network was flagged for
+    nothing, and each benign member is a false positive "via" that network.
+    When an attacker shares the network, its benign neighbours are collateral
+    of a justified block, not a detector error, and are scored as negatives.
+    """
     res = EvalResult(min_severity=min_severity)
+    networks = {k: n for k in flagged if (n := _as_network(k)) is not None}
+    addrs = {ip: _as_address(ip) for ip in labels}
+    members = {key: [ip for ip in labels if _containing(addrs[ip], {key: net})]
+               for key, net in networks.items()}
+    has_malicious = {key: any(labels[ip].label == MALICIOUS for ip in ips)
+                     for key, ips in members.items()}
+
     for ip in sorted(labels):
         lab = labels[ip]
-        hit = ip in flagged
+        nets = _containing(addrs[ip], networks)
+        if ip in flagged:
+            hit, rules, via = True, flagged[ip], None
+        elif lab.label == MALICIOUS and nets:
+            hit, rules, via = True, flagged[nets[0]], nets[0]
+        elif lab.label == BENIGN and (bad := [n for n in nets if not has_malicious[n]]):
+            hit, rules, via = True, flagged[bad[0]], bad[0]
+        else:
+            hit, rules, via = False, (), None
+        if via:
+            res.via[ip] = via
         bucket = res.per_scenario.setdefault(
             lab.scenario, {"clients": 0, "detected": 0, "label": lab.label})
         if bucket["label"] != lab.label:
@@ -203,10 +269,12 @@ def score(labels: dict[str, Label], flagged: dict[str, tuple[str, ...]],
         else:
             if hit:
                 res.fp += 1
-                res.false_positives.append((ip, lab.scenario, flagged[ip]))
+                res.false_positives.append((ip, lab.scenario, rules))
             else:
                 res.tn += 1
-    res.unlabelled_flagged = [(ip, flagged[ip]) for ip in sorted(flagged) if ip not in labels]
+    res.unlabelled_flagged = [
+        (key, flagged[key]) for key in sorted(flagged)
+        if key not in labels and not members.get(key)]
     res.precision, res.recall, res.f1 = compute_metrics(res.tp, res.fp, res.fn)
     return res
 
@@ -295,8 +363,9 @@ def format_table(res: EvalResult) -> str:
         lines.append("")
         lines.append("False positives (benign clients flagged):")
         for ip, scenario, rules in res.false_positives:
+            via = f"  via {safe_text(res.via[ip])}" if ip in res.via else ""
             lines.append(f"  {safe_text(ip):<16} {safe_text(scenario):<24} "
-                         f"rules: {_rules(rules) or '(none)'}")
+                         f"rules: {_rules(rules) or '(none)'}{via}")
     if res.missed:
         lines.append("")
         lines.append("Missed (malicious clients not flagged):")

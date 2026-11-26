@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 from .config import Config, load_config
-from .correlate import correlate
+from .correlate import correlate, is_network
 from .models import SEVERITIES, SEVERITY_RANK, Alert, Detector, LogEvent, ScanResult
 
 # Events a file may be displaced from timestamp order and still be sorted.
@@ -86,7 +86,9 @@ def run(paths: list[str | Path], config: Config | None = None, fmt: str = "auto"
       so they describe the period the logs cover;
     - ``read_errors`` lists "file: message" for each file that stopped early
       (truncated .gz, I/O error); empty when every file was read to the end.
-      Results from such a scan are partial.
+      Results from such a scan are partial;
+    - ``network_incidents`` counts incidents whose client is a network
+      (e.g. "2001:db8::/64") rather than one address.
     """
     if config is None:
         config = load_config(None)
@@ -148,6 +150,7 @@ def run(paths: list[str | Path], config: Config | None = None, fmt: str = "auto"
         "alerts_by_rule": _alerts_by_rule(alerts),
         "incidents_by_severity": _incidents_by_severity(incidents),
         "read_errors": _read_errors(paths, parse_stats, caught),
+        "network_incidents": _network_incidents(incidents),
     }
     return ScanResult(incidents=incidents, alerts=alerts, stats=stats,
                       generated_at=datetime.now(timezone.utc))
@@ -179,6 +182,11 @@ def _alerts_by_rule(alerts: list[Alert]) -> dict[str, int]:
     return dict(sorted(Counter(a.rule_id for a in alerts).items()))
 
 
+def _network_incidents(incidents) -> int:
+    """Incidents keyed by a network (behaviour detectors' network channel)."""
+    return sum(1 for i in incidents if is_network(i.client_ip))
+
+
 def _incidents_by_severity(incidents) -> dict[str, int]:
     counts = Counter(i.severity for i in incidents)
     return {sev: counts.get(sev, 0) for sev in SEVERITIES}
@@ -198,5 +206,6 @@ def filter_min_severity(result: ScanResult, min_severity: str) -> ScanResult:
     stats = dict(result.stats)
     stats["alerts_by_rule"] = _alerts_by_rule(alerts)
     stats["incidents_by_severity"] = _incidents_by_severity(incidents)
+    stats["network_incidents"] = _network_incidents(incidents)
     return ScanResult(incidents=incidents, alerts=alerts, stats=stats,
                       generated_at=result.generated_at)

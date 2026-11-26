@@ -49,6 +49,24 @@ detectors:
     # detector version that does not support it.
     slow_threshold: 100
     slow_window_seconds: 900
+    # Network channel: also count activity per network, so one attacker
+    # rotating through many addresses still adds up. Alerts from it name the
+    # network (e.g. 2001:db8:abcd:12::/64) instead of one address. Ignored by
+    # a detector version that does not support it.
+    # ipv6_prefix (32-128): a single host or customer usually owns a whole
+    #   /64, so rotating addresses inside it costs an attacker nothing. A
+    #   shorter prefix (/56, /48) catches rotation across a customer's whole
+    #   allocation but can merge separate customers of one ISP.
+    # ipv4_prefix (8-32 or null): off by default. Carrier-grade NAT and ISP
+    #   address pools put unrelated users in the same /24, so grouping IPv4
+    #   merges strangers into one "attacker". Enable (e.g. 24) only for
+    #   networks you know are single-tenant, such as hosting ranges.
+    # min_distinct: addresses a network needs before it is reported as a
+    #   network. Lower catches small rotations but flags networks where two or
+    #   three genuine users happened to trip the threshold together.
+    ipv6_prefix: 64
+    ipv4_prefix: null
+    min_distinct: 4
 
   # Brute force: repeated failed logins (401/403) from one client, and a
   # success after the failures (a likely compromised account, T1110).
@@ -77,6 +95,10 @@ detectors:
       - /api/login
       - /user/login
       - /xmlrpc.php           # WordPress XML-RPC, a favourite brute-force target
+    # Network channel, as for enumeration above.
+    ipv6_prefix: 64
+    ipv4_prefix: null
+    min_distinct: 4
 
   # Rate spike: request floods (application-layer DoS, T1499) or very
   # aggressive crawlers.
@@ -88,6 +110,10 @@ detectors:
     # Higher: only flags real floods; a moderate scraper passes unnoticed.
     threshold: 300
     window_seconds: 60
+    # Network channel, as for enumeration above.
+    ipv6_prefix: 64
+    ipv4_prefix: null
+    min_distinct: 4
 
 # ---------------------------------------------------------------------------
 # rules: turn individual rule ids off without disabling their detector.

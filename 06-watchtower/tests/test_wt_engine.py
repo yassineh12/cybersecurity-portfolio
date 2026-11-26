@@ -17,7 +17,7 @@ from watchtower.models import Alert, LogEvent
 T0 = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
 STAT_KEYS = {"lines_read", "lines_parsed", "lines_malformed", "events_allowlisted",
              "unique_clients", "time_start", "time_end", "files", "alerts_by_rule",
-             "incidents_by_severity", "read_errors"}
+             "incidents_by_severity", "read_errors", "network_incidents"}
 
 # --- a tiny combined-format parser so these tests do not depend on parsers.py ---
 _LINE = re.compile(r'(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) (\S+) [^"]*" (\d{3}) (\d+|-) "([^"]*)" "([^"]*)"')
@@ -168,6 +168,7 @@ def test_stats_filled_per_brief(tmp_path, fake_parser):
     assert st["alerts_by_rule"] == {"SIG-SQLI": 1}
     assert st["incidents_by_severity"] == {"low": 0, "medium": 0, "high": 1, "critical": 0}
     assert st["read_errors"] == []
+    assert st["network_incidents"] == 0
     (alert,) = result.alerts
     assert alert.event_count == 2                     # one alert across both files
     assert result.generated_at.tzinfo is not None
@@ -263,12 +264,18 @@ def test_default_yaml_matches_brief_and_builtin_defaults():
     assert cfg.allowlist == ()                       # the example entry ships commented out
     assert all(cfg.rule_enabled(r) for r in KNOWN_RULES)
     assert cfg.detector_options("enumeration") == {"threshold": 20, "window_seconds": 60,
-                                                   "slow_threshold": 100, "slow_window_seconds": 900}
+                                                   "slow_threshold": 100, "slow_window_seconds": 900,
+                                                   "ipv6_prefix": 64, "ipv4_prefix": None,
+                                                   "min_distinct": 4}
+    for name in ("brute_force", "rate"):
+        opts = cfg.detector_options(name)
+        assert (opts["ipv6_prefix"], opts["ipv4_prefix"], opts["min_distinct"]) == (64, None, 4)
+    assert "ipv6_prefix" not in cfg.detector_options("signatures")
     paths = cfg.detector_options("brute_force")["login_paths"]
     assert "/admin/login" in paths and "/xmlrpc.php" in paths and "/api/login" in paths
     assert cfg.detector_options("brute_force")["threshold"] == 10
     assert cfg.detector_options("brute_force")["window_seconds"] == 300
-    assert cfg.detector_options("rate") == {"threshold": 300, "window_seconds": 60}
+    assert (cfg.detector_options("rate")["threshold"], cfg.detector_options("rate")["window_seconds"]) == (300, 60)
     assert "192.0.2.10" in Path(cfg.source).read_text() and "your uptime monitor" in Path(cfg.source).read_text()
 
 
@@ -312,6 +319,13 @@ def test_empty_config_file_is_defaults(tmp_path):
     ("rules:\n  SIG-SQL: false", "did you mean 'SIG-SQLI'"),
     ("rules:\n  SIG-SQLI: maybe", "true or false"),
     ("scoring:\n  severity_points: {high: 500}", "at most 100"),
+    ("detectors:\n  enumeration:\n    ipv6_prefix: 16", "from 32 to 128"),
+    ("detectors:\n  rate:\n    ipv6_prefix: 129", "from 32 to 128"),
+    ("detectors:\n  rate:\n    ipv6_prefix: null", "from 32 to 128"),
+    ("detectors:\n  brute_force:\n    ipv4_prefix: 4", "from 8 to 32 or null"),
+    ("detectors:\n  brute_force:\n    ipv4_prefix: 33", "from 8 to 32 or null"),
+    ("detectors:\n  enumeration:\n    min_distinct: 1", "at least 2"),
+    ("detectors:\n  signatures:\n    ipv6_prefix: 64", "unknown key 'ipv6_prefix'"),
     ("scoring:\n  severity_cutoffs: {high: 90}", "medium <= high <= critical"),
     ("allowlistt: []", "did you mean 'allowlist'"),
     ("- just a list", "top level must be a mapping"),
@@ -366,7 +380,8 @@ def test_default_detectors_builds_from_config_and_filters_rules(monkeypatch):
     detectors = dets.default_detectors(cfg)
     assert set(built) == {"signatures", "enumeration", "brute_force"}
     assert built["enumeration"] == {"threshold": 7, "window_seconds": 60,
-                                    "slow_threshold": 100, "slow_window_seconds": 900}
+                                    "slow_threshold": 100, "slow_window_seconds": 900,
+                                    "ipv6_prefix": 64, "ipv4_prefix": None, "min_distinct": 4}
     assert built["brute_force"]["login_paths"][0] == "/login"
     assert len(detectors) == 2                      # rate disabled, brute force has no rules left
     ev = LogEvent(T0, "192.0.2.1", "GET", "/", "", 200, 0, "", "")
@@ -444,3 +459,73 @@ def test_truncated_gzip_with_real_parser_does_not_raise(tmp_path):
     (err,) = result.stats["read_errors"]
     assert err.startswith(f"{p}: ") and "cut.log.gz: cut.log.gz" not in err
     assert result.stats["lines_parsed"] > 0                 # what was readable still counts
+
+
+
+# --- network channel (behaviour detectors group IPv6 /64s etc.) ---
+
+def test_network_options_valid_values(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text("detectors:\n  enumeration:\n    ipv6_prefix: 56\n    ipv4_prefix: 24\n"
+                 "    min_distinct: 3\n  rate:\n    ipv4_prefix: null\n")
+    cfg = load_config(p)
+    opts = cfg.detector_options("enumeration")
+    assert (opts["ipv6_prefix"], opts["ipv4_prefix"], opts["min_distinct"]) == (56, 24, 3)
+    assert cfg.detector_options("rate")["ipv4_prefix"] is None
+
+
+class PerNetwork:
+    """Fake network channel: one alert per /64 once 2+ distinct addresses hit /evil."""
+    rule_ids = ("BEH-404-BURST",)
+
+    def __init__(self):
+        self.addrs: dict[str, set[str]] = {}
+        self.fed: list[str] = []
+
+    def feed(self, event):
+        import ipaddress
+        self.fed.append(event.client_ip)
+        if event.path == "/evil":
+            net = str(ipaddress.ip_network(f"{event.client_ip}/64", strict=False))
+            self.addrs.setdefault(net, set()).add(event.client_ip)
+        return []
+
+    def flush(self):
+        return [Alert("BEH-404-BURST", "Burst", "medium", net, T0, T0, len(a), "T1595.003",
+                      detail=f"distributed across {len(a)} addresses in {net}: ...")
+                for net, a in self.addrs.items() if len(a) >= 2]
+
+
+def test_allowlisted_addresses_never_reach_the_network_channel(tmp_path, fake_parser):
+    lines = [line(f"2001:db8:abcd:12::{n}", n, "/evil") for n in range(1, 5)]
+    p = write_log(tmp_path, "v6.log", lines)
+    det = PerNetwork()
+    # three of the four addresses are allowlisted: the /64 must not reach 2 distinct
+    cfg = config_from_dict({"allowlist": ["2001:db8:abcd:12::1", "2001:db8:abcd:12::2/127",
+                                          "2001:db8:abcd:12::3"]})
+    result = run([p], cfg, detectors=[det])
+    assert det.fed == ["2001:db8:abcd:12::4"]
+    assert result.incidents == [] and result.stats["network_incidents"] == 0
+    assert result.stats["events_allowlisted"] == 3
+    # without the allowlist the same traffic is a network incident
+    result = run([p], Config(), detectors=[PerNetwork()])
+    assert [i.client_ip for i in result.incidents] == ["2001:db8:abcd:12::/64"]
+    assert result.stats["network_incidents"] == 1
+    assert filter_min_severity(result, "high").stats["network_incidents"] == 0
+
+
+def test_allowlist_and_real_network_channel(tmp_path):
+    import inspect
+    pytest.importorskip("watchtower.parsers")
+    beh = pytest.importorskip("watchtower.detectors.behaviour")
+    if "ipv6_prefix" not in inspect.signature(beh.EnumerationDetector.__init__).parameters:
+        pytest.skip("behaviour.py has no network channel yet")
+    # 8 addresses of one /64, each 4 misses: below the per-address threshold (20),
+    # 32 together: above it as a network.
+    lines = [line(f"2001:db8:abcd:12::{a}", a * 4 + k, f"/x{a}{k}", 404) for a in range(1, 9) for k in range(4)]
+    p = write_log(tmp_path, "v6.log", lines)
+    flagged = run([p], load_config(None))
+    assert "2001:db8:abcd:12::/64" in {i.client_ip for i in flagged.incidents}
+    allow_all = config_from_dict({"allowlist": ["2001:db8:abcd:12::/64"]})
+    quiet = run([p], allow_all)
+    assert quiet.incidents == [] and quiet.stats["events_allowlisted"] == 32

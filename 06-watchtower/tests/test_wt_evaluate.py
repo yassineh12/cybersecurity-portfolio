@@ -436,3 +436,76 @@ class TestTerminalSafety:
     def test_error_message_sanitised(self, write_csv, log_file, capsys):
         ev.main([str(log_file), str(write_csv("ip\x1b[2J,verdict\n1,2\n"))], run_fn=fake_engine([]))
         assert "\x1b" not in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# network incidents (IPv6 /64 grouping)
+# --------------------------------------------------------------------------
+
+NET = "2001:db8:abcd:12::/64"
+
+
+class TestNetworkIncidents:
+    def _labels(self, write_csv, rows):
+        return write_csv("client_ip,label,scenario\n" + "".join(f"{r}\n" for r in rows))
+
+    def test_network_flags_contained_malicious(self, write_csv, log_file):
+        labels = self._labels(write_csv, ["2001:db8:abcd:12::5,malicious,ipv6_rotation",
+                                          "2001:db8:abcd:12:ffff::9,malicious,ipv6_rotation",
+                                          "2001:db8:abcd:13::5,malicious,other_net"])
+        res = ev.evaluate(log_file, labels, run_fn=fake_engine([make_incident(NET, ("BEH-404-BURST",))]))
+        assert (res.tp, res.fn) == (2, 1)
+        assert res.missed == [("2001:db8:abcd:13::5", "other_net")]
+        assert res.via == {"2001:db8:abcd:12::5": NET, "2001:db8:abcd:12:ffff::9": NET}
+        assert res.unlabelled_flagged == []
+        assert res.per_scenario["ipv6_rotation"]["detected"] == 2
+
+    def test_network_without_malicious_makes_benign_fp(self, write_csv, log_file, capsys):
+        labels = self._labels(write_csv, ["2001:db8:abcd:12::1,benign,office_nat",
+                                          "2001:db8:abcd:12::2,benign,office_nat",
+                                          "192.0.2.1,benign,browsing"])
+        engine = fake_engine([make_incident(NET, ("BEH-RATE-SPIKE",), "low")])
+        res = ev.evaluate(log_file, labels, run_fn=engine)
+        assert (res.fp, res.tn) == (2, 1)
+        assert res.false_positives == [("2001:db8:abcd:12::1", "office_nat", ("BEH-RATE-SPIKE",)),
+                                       ("2001:db8:abcd:12::2", "office_nat", ("BEH-RATE-SPIKE",))]
+        assert ev.format_table(res).count(f"via {NET}") == 2
+
+    def test_benign_neighbour_of_attacker_not_fp(self, write_csv, log_file):
+        labels = self._labels(write_csv, ["2001:db8:abcd:12::bad,malicious,ipv6_rotation",
+                                          "2001:db8:abcd:12::1,benign,neighbour"])
+        res = ev.evaluate(log_file, labels, run_fn=fake_engine([make_incident(NET)]))
+        assert (res.tp, res.fp, res.fn, res.tn) == (1, 0, 0, 1)
+        assert "2001:db8:abcd:12::1" not in res.via
+
+    def test_exact_incident_on_benign_inside_mixed_network_still_fp(self, write_csv, log_file):
+        labels = self._labels(write_csv, ["2001:db8:abcd:12::bad,malicious,x",
+                                          "2001:db8:abcd:12::1,benign,y"])
+        engine = fake_engine([make_incident(NET), make_incident("2001:db8:abcd:12::1", ("SIG-XSS",))])
+        res = ev.evaluate(log_file, labels, run_fn=engine)
+        assert res.false_positives == [("2001:db8:abcd:12::1", "y", ("SIG-XSS",))]
+        assert "2001:db8:abcd:12::1" not in res.via
+
+    def test_network_with_no_labelled_clients_is_unlabelled(self, write_csv, log_file):
+        labels = self._labels(write_csv, ["192.0.2.1,benign,browsing"])
+        res = ev.evaluate(log_file, labels, run_fn=fake_engine([make_incident(NET, ("BEH-404-BURST",))]))
+        assert res.unlabelled_flagged == [(NET, ("BEH-404-BURST",))]
+        assert res.total == 1 and res.tn == 1
+
+    def test_ipv4_network_and_version_mismatch(self, write_csv, log_file):
+        labels = self._labels(write_csv, ["198.51.100.7,malicious,v4", "::ffff:1,malicious,v6"])
+        res = ev.evaluate(log_file, labels, run_fn=fake_engine([make_incident("198.51.100.0/24")]))
+        assert res.tp == 1 and res.missed == [("::ffff:1", "v6")]
+
+    def test_most_specific_network_reported(self, write_csv, log_file):
+        labels = self._labels(write_csv, ["2001:db8:abcd:12::5,malicious,x"])
+        engine = fake_engine([make_incident("2001:db8::/32"), make_incident(NET)])
+        res = ev.evaluate(log_file, labels, run_fn=engine)
+        assert res.via["2001:db8:abcd:12::5"] == NET
+
+    def test_garbage_keys_do_not_crash(self, write_csv, log_file):
+        labels = self._labels(write_csv, ["not-an-ip,malicious,x", "192.0.2.1,benign,y"])
+        engine = fake_engine([make_incident("bogus/64"), make_incident("not-an-ip")])
+        res = ev.evaluate(log_file, labels, run_fn=engine)
+        assert res.tp == 1 and res.tn == 1
+        assert res.unlabelled_flagged == [("bogus/64", ("SIG-SQLI",))]

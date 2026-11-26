@@ -190,12 +190,12 @@ def format_summary(result: ScanResult, top: int = 10, written: dict | None = Non
     ]
     if result.incidents:
         rows = result.incidents[:max(top, 0)]
-        ip_w = max([6] + [len(_safe(i.client_ip, 39)) for i in rows])
+        ip_w = max([6] + [len(_safe(i.client_ip, 43)) for i in rows])
         st_w = max([6] + [len(_safe(">".join(i.stages), 30)) for i in rows])
         lines.append(f"  {'SCORE':>5}  {'SEVERITY':<8}  {'CLIENT':<{ip_w}}  {'STAGES':<{st_w}}  SUMMARY")
         for inc in rows:
             lines.append(
-                f"  {inc.score:>5}  {inc.severity:<8}  {_safe(inc.client_ip, 39):<{ip_w}}  "
+                f"  {inc.score:>5}  {inc.severity:<8}  {_safe(inc.client_ip, 43):<{ip_w}}  "
                 f"{_safe('>'.join(inc.stages) or '-', 30):<{st_w}}  {_safe(inc.summary, 110)}")
         hidden = len(result.incidents) - max(top, 0)
         if hidden > 0:

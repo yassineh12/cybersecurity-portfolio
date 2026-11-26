@@ -33,20 +33,29 @@ KNOWN_RULES: tuple[str, ...] = (
     "BEH-404-BURST", "BEH-BRUTE-FORCE", "BEH-BRUTE-SUCCESS", "BEH-RATE-SPIKE",
 )
 
+# Network-level channel of the behaviour detectors: also count activity per
+# network, so an attacker rotating through many addresses of one IPv6 /64
+# (trivially cheap: a single host usually owns the whole /64) still adds up.
+# IPv4 grouping is off (None) by default: carrier-grade NAT and ISP blocks put
+# unrelated users in the same /24, and merging them manufactures attackers.
+NETWORK_DEFAULTS: dict[str, Any] = {"ipv6_prefix": 64, "ipv4_prefix": None, "min_distinct": 4}
+_PREFIX_RANGES = {"ipv6_prefix": (32, 128), "ipv4_prefix": (8, 32)}
+
 # Detector name -> its constructor options and their defaults (the brief's values).
 DEFAULT_DETECTOR_OPTIONS: dict[str, dict[str, Any]] = {
     "signatures": {"max_evidence": 5},
     "enumeration": {"threshold": 20, "window_seconds": 60,
-                    "slow_threshold": 100, "slow_window_seconds": 900},
+                    "slow_threshold": 100, "slow_window_seconds": 900,
+                    **NETWORK_DEFAULTS},
     "brute_force": {
-        "threshold": 10, "window_seconds": 300,
+        "threshold": 10, "window_seconds": 300, **NETWORK_DEFAULTS,
         # Matched exactly (a query string is allowed), never as a prefix: a
         # bare "/admin" prefix would turn every admin-panel form post into a
         # "failed login".
         "login_paths": ("/login", "/signin", "/wp-login.php", "/admin", "/admin/login",
                         "/api/auth", "/api/login", "/user/login", "/xmlrpc.php"),
     },
-    "rate": {"threshold": 300, "window_seconds": 60},
+    "rate": {"threshold": 300, "window_seconds": 60, **NETWORK_DEFAULTS},
 }
 
 # Scoring weights; correlate.py documents how they combine.
@@ -212,6 +221,16 @@ def _bool(value: Any, where: str) -> bool:
     return value
 
 
+def _prefix(value: Any, key: str, where: str) -> int | None:
+    lo, hi = _PREFIX_RANGES[key]
+    if value is None and key == "ipv4_prefix":
+        return None                                     # IPv4 grouping off
+    if isinstance(value, bool) or not isinstance(value, int) or not lo <= value <= hi:
+        off = " or null to disable" if key == "ipv4_prefix" else ""
+        raise ConfigError(f"{where} must be an integer from {lo} to {hi}{off}, got {value!r}")
+    return value
+
+
 def _login_paths(value: Any, where: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not value:
         raise ConfigError(f"{where} must be a non-empty list of paths")
@@ -241,6 +260,13 @@ def _parse_detectors(raw: Any, where: str) -> tuple[dict, dict]:
                 enabled[name] = _bool(value, f"{ctx}.enabled")
             elif key == "login_paths":
                 detectors[name][key] = _login_paths(value, f"{ctx}.login_paths")
+            elif key in _PREFIX_RANGES:
+                detectors[name][key] = _prefix(value, key, f"{ctx}.{key}")
+            elif key == "min_distinct":
+                detectors[name][key] = _positive_int(value, f"{ctx}.min_distinct")
+                if value < 2:
+                    raise ConfigError(f"{ctx}.min_distinct must be at least 2 (one address "
+                                      f"is already covered per client), got {value}")
             else:
                 detectors[name][key] = _positive_int(value, f"{ctx}.{key}")
     return detectors, enabled

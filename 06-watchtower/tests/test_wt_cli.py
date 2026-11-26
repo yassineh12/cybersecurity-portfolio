@@ -254,3 +254,11 @@ def test_corrupt_gzip_end_to_end_no_traceback(tmp_path):
     assert "Traceback" not in proc.stderr
     assert "results are partial" in proc.stderr and str(log) in proc.stderr
     assert proc.stderr.count("cut.log.gz:") == 2            # one warning + one error line, no duplicates
+
+
+
+def test_summary_table_shows_full_ipv6_network():
+    net = "2001:db8:abcd:12::/64"
+    text = format_summary(fake_result([alert("BEH-404-BURST", "medium", net,
+                                             detail=f"distributed across 7 addresses in {net}: x")]))
+    assert net in text and "Clients in 2001:db8:abcd:12::/64 (7 addresses)" in text
