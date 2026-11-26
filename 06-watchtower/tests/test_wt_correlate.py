@@ -241,3 +241,70 @@ def test_network_and_member_incidents_stay_separate_but_linked():
     assert "related to" not in by_ip[outsider].summary
     assert "related to" not in by_ip[v4].summary
     assert "related to" not in by_ip[NET].summary
+
+
+
+# --- long-horizon detectors ---
+
+def test_long_horizon_rules_are_recon():
+    assert stage_of(alert("BEH-LOW-AND-SLOW", "medium")) == "recon"
+    assert stage_of(alert("BEH-ID-ENUM", "medium")) == "recon"
+
+
+def test_low_and_slow_summary_from_detail():
+    a = alert("BEH-LOW-AND-SLOW", "medium", count=70,
+              detail="62 misses across 41 distinct paths over 5.2 hours (miss ratio 0.71).")
+    assert summarize(IP, [a]) == f"{IP} probed slowly over five hours (62 misses across 41 paths)."
+
+
+def test_low_and_slow_summary_falls_back_to_alert_fields():
+    a = alert("BEH-LOW-AND-SLOW", "medium", count=45, detail="something else entirely")
+    a.last_seen = a.first_seen + timedelta(hours=3, minutes=10)
+    assert summarize(IP, [a]) == f"{IP} probed slowly over three hours (45 misses)."
+    b = alert("BEH-LOW-AND-SLOW", "medium", count=0)
+    b.last_seen = b.first_seen
+    assert summarize(IP, [b]) == f"{IP} probed many missing paths."
+
+
+def test_id_enum_summary_from_detail():
+    a = alert("BEH-ID-ENUM", "medium", count=99,
+              detail="40 sequential IDs on /api/users/{id}, range 1000-1039, max step 1.")
+    assert summarize(IP, [a]) == f"{IP} walked sequential IDs on /api/users/{{id}} (40 IDs, range 1000-1039)."
+
+
+def test_id_enum_summary_falls_back():
+    assert summarize(IP, [alert("BEH-ID-ENUM", "medium", count=30, detail="")]) == \
+        f"{IP} walked sequential IDs (30 requests)."
+
+
+def test_long_horizon_then_exploit_gets_sequence_bonus():
+    chain = [alert("BEH-LOW-AND-SLOW", "medium"), alert("SIG-SQLI", "high", minute=30)]
+    assert score_alerts(chain) == 60 + 5 + 10 + 10
+
+
+
+def test_summaries_match_longhorizon_detail_wording():
+    # wording as emitted by watchtower/detectors/longhorizon.py
+    slow = alert("BEH-LOW-AND-SLOW", "medium", count=62,
+                 detail="62 miss responses (401/403/404/410) of 80 requests (78%) across 41 distinct "
+                        "paths within 21600s; patient forced browsing that stays under the short-window rules.")
+    slow.last_seen = slow.first_seen + timedelta(hours=4, minutes=50)
+    assert summarize(IP, [slow]) == f"{IP} probed slowly over five hours (62 misses across 41 paths)."
+    slow.last_seen = slow.first_seen + timedelta(minutes=40)
+    assert "probed many missing paths over 40 minutes (62 misses" in summarize(IP, [slow])
+    ids = alert("BEH-ID-ENUM", "medium", count=45,
+                detail="template /invoice/INV-{id}: 40 distinct IDs (1000..1039) within 21600s "
+                       "forming a sequential walk; 3 answered non-2xx.")
+    assert summarize(IP, [ids]) == (f"{IP} walked sequential IDs on /invoice/INV-{{id}} "
+                                    f"(40 IDs, range 1000-1039).")
+    net = "2001:db8:abcd:12::/64"
+    ids_net = alert("BEH-ID-ENUM", "medium", ip=net,
+                    detail=f"distributed across 5 addresses in {net}: template /api/u/{{id}}: "
+                           f"30 distinct IDs (7..36) within 21600s forming a sequential walk; 0 answered non-2xx.")
+    assert summarize(net, [ids_net]) == (f"Clients in {net} (5 addresses) walked sequential IDs on "
+                                         f"/api/u/{{id}} (30 IDs, range 7-36).")
+
+
+def test_low_and_slow_not_repeated_when_burst_already_told():
+    s = summarize(IP, [alert("BEH-404-BURST", "medium", count=80), alert("BEH-LOW-AND-SLOW", "medium", minute=1)])
+    assert s == f"{IP} enumerated paths (80 requests answered 404/403/410)."

@@ -45,6 +45,8 @@ RULE_STAGE = {
     "SIG-UA-SCANNER": "recon",
     "SIG-SENSITIVE-PATH": "recon",
     "BEH-404-BURST": "recon",
+    "BEH-LOW-AND-SLOW": "recon",
+    "BEH-ID-ENUM": "recon",
     "SIG-SQLI": "exploit",
     "SIG-XSS": "exploit",
     "SIG-TRAVERSAL": "exploit",
@@ -98,6 +100,14 @@ _STATUS_RE = re.compile(r'"\s+(\d{3})\s+(?:\d+|-)|"status"\s*:\s*"?(\d{3})')
 _UA_RE = re.compile(r'"http_user_agent"\s*:\s*"((?:[^"\\]|\\.)*)"|"([^"]*)"\s*$')
 # "3 request(s) were answered with HTTP 2xx": the true count, evidence is capped.
 _DETAIL_COUNT_RE = re.compile(r"(\d+)[^.\d]*\b2xx\b", re.IGNORECASE)
+# Long-horizon detectors' details (parsed defensively; absent numbers are omitted).
+_HOURS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:h\b|hours?\b)", re.IGNORECASE)
+_MISSES_RE = re.compile(r"(\d+)\s+(?:miss(?:es)?|not[- ]found|404s?)\b", re.IGNORECASE)
+_PATHS_RE = re.compile(r"(\d+)\s+(?:distinct\s+|different\s+|unique\s+)?paths?\b", re.IGNORECASE)
+_IDS_RE = re.compile(r"(\d+)\s+(?:distinct\s+|sequential\s+|unique\s+)?ids?\b", re.IGNORECASE)
+_RANGE_RE = re.compile(r"(?:range|from|ids?)\s*:?\s*\(?\s*(\d+)\s*(?:-|–|\.\.|to)\s*(\d+)", re.IGNORECASE)
+_TEMPLATE_RE = re.compile(r"(/[^\s\"']*(?:\{[^}\s]*\}|<[^>\s]*>|:id\b)[^\s\"']*)")
+
 # Network-channel alerts: "distributed across 6 addresses in 2001:db8::/64: ..."
 _DISTRIBUTED_RE = re.compile(r"distributed across (\d+) addresses", re.IGNORECASE)
 # A detail that reports a 2xx answer ("got a 2xx", "answered 200"), not any 2nn number.
@@ -301,6 +311,8 @@ def summarize(ip: str, alerts: list[Alert]) -> str:
     for alert in ordered:
         if alert.rule_id == "BEH-BRUTE-SUCCESS" and "BEH-BRUTE-FORCE" in rules:
             continue                         # told as a consequence clause below
+        if alert.rule_id == "BEH-LOW-AND-SLOW" and "BEH-404-BURST" in rules:
+            continue                         # same misses; the burst already tells it
         phrase = _phrase(alert)
         if phrase not in phrases:
             phrases.append(phrase)
@@ -336,6 +348,10 @@ def _phrase(alert: Alert) -> str:
         return f"ran {_article(tool)} {tool} scan" if tool else "ran an automated scanner"
     if rule == "BEH-404-BURST":
         return f"enumerated paths ({_count(alert.event_count, 'request')} answered 404/403/410)"
+    if rule == "BEH-LOW-AND-SLOW":
+        return _low_and_slow_phrase(alert)
+    if rule == "BEH-ID-ENUM":
+        return _id_enum_phrase(alert)
     if rule == "BEH-BRUTE-FORCE":
         noun = "failed attempt" if _explicit_failures(alert) else "login attempt"
         return f"brute-forced a login ({_count(alert.event_count, noun)})"
@@ -347,6 +363,67 @@ def _phrase(alert: Alert) -> str:
         return PHRASES[rule]
     title = (alert.title or rule).strip()
     return f"triggered {title[0].lower() + title[1:]}" if title else f"triggered {rule}"
+
+
+def _num(pattern: re.Pattern, text: str) -> int | None:
+    m = pattern.search(text)
+    return int(m.group(1)) if m else None
+
+
+def _low_and_slow_phrase(alert: Alert) -> str:
+    """ "probed slowly over 5 hours (62 misses across 41 paths)".
+
+    Numbers come from the detail when it states them, else from the alert's
+    own fields; whatever cannot be established is left out, never guessed.
+    """
+    detail = alert.detail or ""
+    m = _HOURS_RE.search(detail)
+    if m:
+        duration = _count(max(1, round(float(m.group(1)))), "hour")
+    else:                      # longhorizon.py states the window, not the span seen
+        span = (alert.last_seen - alert.first_seen).total_seconds()
+        if span >= 3600:
+            duration = _count(round(span / 3600), "hour")
+        elif span >= 60:
+            duration = _count(round(span / 60), "minute")
+        else:
+            duration = ""
+    misses = _num(_MISSES_RE, detail)
+    if misses is None:
+        misses = alert.event_count or None
+    paths = _num(_PATHS_RE, detail)
+    # The detector also fires on fast scanners (their misses pile up too);
+    # only call it "slow" when the activity really spanned an hour or more.
+    if duration and "hour" in duration:
+        phrase = f"probed slowly over {duration}"
+    elif duration:
+        phrase = f"probed many missing paths over {duration}"
+    else:
+        phrase = "probed many missing paths"
+    facts = []
+    if misses:
+        facts.append(f"{_word(misses)} miss{'' if misses == 1 else 'es'}")
+    if paths:
+        facts.append(f"across {_count(paths, 'path')}")
+    return phrase + (f" ({' '.join(facts)})" if facts else "")
+
+
+def _id_enum_phrase(alert: Alert) -> str:
+    """ "walked sequential IDs on /api/users/{id} (40 IDs, range 1000-1039)"."""
+    detail = alert.detail or ""
+    m = _TEMPLATE_RE.search(detail)
+    template = m.group(1).rstrip(".,;:)")[:80] if m else ""
+    ids = _num(_IDS_RE, detail)
+    rng = _RANGE_RE.search(detail)
+    phrase = "walked sequential IDs" + (f" on {template}" if template else "")
+    facts = []
+    if ids:
+        facts.append(f"{ids} ID" + ("" if ids == 1 else "s"))
+    elif alert.event_count:                  # count of requests, not IDs: say so
+        facts.append(_count(alert.event_count, "request"))
+    if rng:
+        facts.append(f"range {rng.group(1)}-{rng.group(2)}")
+    return phrase + (f" ({', '.join(facts)})" if facts else "")
 
 
 def _explicit_failures(alert: Alert) -> bool:

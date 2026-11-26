@@ -31,6 +31,7 @@ KNOWN_RULES: tuple[str, ...] = (
     "SIG-UA-SCANNER", "SIG-SENSITIVE-PATH", "SIG-SQLI", "SIG-XSS",
     "SIG-TRAVERSAL", "SIG-CMDI", "SIG-LOG4SHELL",
     "BEH-404-BURST", "BEH-BRUTE-FORCE", "BEH-BRUTE-SUCCESS", "BEH-RATE-SPIKE",
+    "BEH-LOW-AND-SLOW", "BEH-ID-ENUM",
 )
 
 # Network-level channel of the behaviour detectors: also count activity per
@@ -56,6 +57,17 @@ DEFAULT_DETECTOR_OPTIONS: dict[str, dict[str, Any]] = {
                         "/api/auth", "/api/login", "/user/login", "/xmlrpc.php"),
     },
     "rate": {"threshold": 300, "window_seconds": 60, **NETWORK_DEFAULTS},
+    "low_and_slow": {"window_seconds": 21600, "min_misses": 40, "min_miss_ratio": 0.3,
+                     "min_distinct_paths": 20, **NETWORK_DEFAULTS},
+    "id_enumeration": {"window_seconds": 21600, "min_ids": 25, "max_step": 3,
+                       "min_sequential": 0.7, **NETWORK_DEFAULTS},
+}
+
+# Options a detector accepts that have no built-in value here: they are passed
+# only when the config sets them, so the detector's own default applies
+# otherwise (and a WATCHTOWER default can never silently override a newer one).
+OPTIONAL_DETECTOR_OPTIONS: dict[str, tuple[str, ...]] = {
+    "brute_force": ("login_keywords", "path_agnostic_factor"),
 }
 
 # Scoring weights; correlate.py documents how they combine.
@@ -254,7 +266,8 @@ def _parse_detectors(raw: Any, where: str) -> tuple[dict, dict]:
             continue
         if not isinstance(opts, dict):
             raise ConfigError(f"{ctx} must be a mapping of options")
-        _reject_unknown(opts, ("enabled", *DEFAULT_DETECTOR_OPTIONS[name]), ctx)
+        _reject_unknown(opts, ("enabled", *DEFAULT_DETECTOR_OPTIONS[name],
+                               *OPTIONAL_DETECTOR_OPTIONS.get(name, ())), ctx)
         for key, value in opts.items():
             if key == "enabled":
                 enabled[name] = _bool(value, f"{ctx}.enabled")
@@ -267,9 +280,28 @@ def _parse_detectors(raw: Any, where: str) -> tuple[dict, dict]:
                 if value < 2:
                     raise ConfigError(f"{ctx}.min_distinct must be at least 2 (one address "
                                       f"is already covered per client), got {value}")
+            elif key in ("min_miss_ratio", "min_sequential"):
+                detectors[name][key] = _ratio(value, f"{ctx}.{key}")
+            elif key == "path_agnostic_factor":
+                detectors[name][key] = _positive_int(value, f"{ctx}.{key}")
+            elif key == "login_keywords":
+                detectors[name][key] = _keywords(value, f"{ctx}.{key}")
             else:
                 detectors[name][key] = _positive_int(value, f"{ctx}.{key}")
     return detectors, enabled
+
+
+def _ratio(value: Any, where: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value <= 1:
+        raise ConfigError(f"{where} must be a number above 0 and at most 1, got {value!r}")
+    return float(value)
+
+
+def _keywords(value: Any, where: str) -> tuple[str, ...]:
+    """A list of keywords; an empty list is allowed and switches keyword matching off."""
+    if not isinstance(value, list) or not all(isinstance(k, str) and k.strip() for k in value):
+        raise ConfigError(f"{where} must be a list of non-empty strings ([] disables)")
+    return tuple(k.strip().lower() for k in value)
 
 
 def _parse_rules(raw: Any, where: str) -> dict[str, bool]:

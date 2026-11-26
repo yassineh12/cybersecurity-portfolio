@@ -376,9 +376,103 @@ def _ipv6_household(log):
         ts += timedelta(seconds=rng.randint(4, 9))
 
 
+def _stuffing_custom_path(log):
+    rng, ip = log.rng, "203.0.113.26"
+    ts = log.at(0.05, 0.6, room=700)
+    for _ in range(60):
+        log.add(ts, ip, "POST", "/members/sign-in", 401, rng.randint(300, 340), ref=SITE + "/members/sign-in", ua=BROWSER)
+        ts += timedelta(seconds=rng.randint(6, 9))
+    log.add(ts, ip, "POST", "/members/sign-in", 302, 0, ref=SITE + "/members/sign-in", ua=BROWSER)
+    log.add(ts + timedelta(seconds=1), ip, "GET", "/members/home", 200, ref=SITE + "/members/sign-in", ua=BROWSER)
+    log.label(ip, "malicious", "stuffing_custom_path")
+
+
+def _stuffing_json_200(log):
+    rng, ip = log.rng, "203.0.113.27"
+    uas = [BROWSER_UAS[i % len(BROWSER_UAS)] + (" " if i < 5 else " Edg/124.0") for i in range(6)]
+    uas = [u.strip() + f" Build/{i}" for i, u in enumerate(uas)]
+    ts = log.at(0.05, 0.6, room=600)
+    for n in range(80):
+        log.add(ts, ip, "POST", "/oauth2/token", 200, 37, ua=uas[n % 6])
+        ts += timedelta(seconds=rng.randint(3, 6))
+    log.add(ts, ip, "POST", "/oauth2/token", 200, 412, ua=uas[0])
+    log.add(ts + timedelta(seconds=1), ip, "GET", "/v1/me", 200, ua=uas[0])
+    log.label(ip, "malicious", "stuffing_json_200")
+
+
+def _slow_probe_v6(log):
+    rng = log.rng
+    ips = []
+    while len(ips) < 30:
+        ip = _v6("2001:db8:5eed:9::/64", rng)
+        if ip not in ips:
+            ips.append(ip)
+    names = ["admin", "internal", "debug", "export", "users", "billing", "keys", "backup"]
+    step, n, ts = 200, 0, log.start + timedelta(seconds=rng.randint(0, 100))
+    while ts < log.start + timedelta(seconds=log.span):
+        path = f"/v1/projects/{1000 + n}" if n % 2 == 0 else f"/v1/{names[n % len(names)]}-{n}"
+        status = rng.choice([401, 401, 403, 403, 404, 404, 404, 200])
+        log.add(ts, ips[n % 30], "GET", path, status, ua=BROWSER_UAS[4])
+        n += 1
+        ts += timedelta(seconds=rng.randint(step - 60, step + 60))
+    for ip in ips:
+        log.label(ip, "malicious", "slow_probe_v6")
+
+
+def _idor_walk(log):
+    rng, ip = log.rng, "203.0.113.28"
+    ts = log.start + timedelta(seconds=rng.randint(0, max(0, log.span - 81 * 240)))
+    for n in range(5000, 5081):
+        log.add(ts, ip, "GET", f"/v1/invoices/{n}", rng.choice([200, 403]), ua="python-requests/2.31.0")
+        ts += timedelta(seconds=rng.randint(180, 240))
+    log.label(ip, "malicious", "idor_walk")
+
+
+def _docs_search(log, ip, ua, q, ts):
+    log.add(ts, ip, "GET", f"/docs/search?q={q}", 200, log.rng.randint(3000, 6000), ref=SITE + "/docs/", ua=ua)
+
+
+def _docs_searcher(log):
+    rng, ip = log.rng, "198.51.100.251"
+    ua = BROWSER_UAS[2]
+    ordinary = ["install", "api+keys", "rate+limits", "webhooks", "pagination", "errors", "sdk", "faq", "billing"]
+    for i in range(5):      # ordinary benign users search the same endpoint, similar sizes
+        uip = f"192.0.2.{10 + i}"
+        for q in rng.sample(ordinary, 3):
+            _docs_search(log, uip, BROWSER_UAS[i], q, log.at(0, 1, room=60))
+    snippets = ["SELECT+id+FROM+users+WHERE", "%3Cscript+src%3D%22app.js%22%3E", "%27+OR+1%3D1+explained",
+                "UNION+SELECT+explained", "DROP+TABLE+syntax", "..%2F+path+syntax"]
+    ts = log.at(0.1, 0.7, room=900)
+    for q in snippets:
+        _docs_search(log, ip, ua, q, ts)
+        ts += timedelta(seconds=rng.randint(30, 150))
+    log.label(ip, "benign", "docs_searcher")
+
+
+def _order_history_user(log):
+    rng, ip, ua = log.rng, "198.51.100.252", BROWSER_UAS[1]
+    ts = log.at(0.1, 0.8, room=900)
+    first = rng.randint(1000, 9000)
+    for n in range(first, first + 10):
+        log.add(ts, ip, "GET", f"/account/orders/{n}", 200, ref=SITE + "/account/orders", ua=ua)
+        ts += timedelta(seconds=rng.randint(15, 70))
+    log.label(ip, "benign", "order_history_user")
+
+
+def _contact_form_user(log):
+    rng, ip, ua = log.rng, "198.51.100.253", BROWSER_UAS[0]
+    ts = log.at(0.05, 0.6, room=7300)
+    for _ in range(15):
+        log.add(ts, ip, "POST", "/contact", 200, rng.randint(900, 1100), ref=SITE + "/contact", ua=ua)
+        ts += timedelta(seconds=rng.randint(360, 540))
+    log.label(ip, "benign", "contact_form_user")
+
+
 HARD_SCENARIOS = (_stealth_enum, _wp_bruteforce, _slow_bruteforce, _sqli_evasive, _traversal_encoded,
                   _lookalike, _admin_user, _downloader, _office_nat,
-                  _ipv6_rotating_enum, _ipv6_users, _ipv6_household)
+                  _ipv6_rotating_enum, _ipv6_users, _ipv6_household,
+                  _stuffing_custom_path, _stuffing_json_200, _slow_probe_v6, _idor_walk,
+                  _docs_searcher, _order_history_user, _contact_form_user)
 
 
 def generate(seed: int, hours: float, start: datetime | None = None,

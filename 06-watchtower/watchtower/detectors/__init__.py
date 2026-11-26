@@ -24,6 +24,8 @@ _REGISTRY: tuple[tuple[str, str, str], ...] = (
     ("enumeration", "watchtower.detectors.behaviour", "EnumerationDetector"),
     ("brute_force", "watchtower.detectors.behaviour", "BruteForceDetector"),
     ("rate", "watchtower.detectors.behaviour", "RateDetector"),
+    ("low_and_slow", "watchtower.detectors.longhorizon", "LowAndSlowDetector"),
+    ("id_enumeration", "watchtower.detectors.longhorizon", "IdEnumerationDetector"),
 )
 
 
@@ -71,6 +73,9 @@ def default_detectors(config: "Config") -> "list[Detector]":
             warnings.warn(f"detector '{name}' unavailable ({module_name}.{class_name}): {exc}",
                           RuntimeWarning, stacklevel=2)
             continue
+        declared = getattr(cls, "rule_ids", None)
+        if declared and not any(config.rule_enabled(r) for r in declared):
+            continue                                   # skip building it at all
         wrapped = RuleFilter(cls(**_accepted_options(name, cls, config)), config)
         if getattr(wrapped.inner, "rule_ids", None) and not wrapped.rule_ids:
             continue                                   # every rule switched off

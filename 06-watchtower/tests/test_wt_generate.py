@@ -113,7 +113,9 @@ def test_cli_writes_files(tmp_path):
 
 HARD = ("stealth_enum", "wp_bruteforce", "bruteforce_slow_success", "sqli_evasive", "traversal_encoded",
         "lookalike_searcher", "admin_user", "downloader", "office_nat",
-        "ipv6_rotating_enum", "ipv6_users", "ipv6_household")
+        "ipv6_rotating_enum", "ipv6_users", "ipv6_household",
+        "stuffing_custom_path", "stuffing_json_200", "slow_probe_v6", "idor_walk",
+        "docs_searcher", "order_history_user", "contact_form_user")
 
 
 def test_hard_profile_scenarios_labelled_and_present():
@@ -177,3 +179,37 @@ def test_ipv6_scenarios():
     n404 = sum(1 for ln in lines if ln.split()[0] in house and COMBINED.match(ln).group(5) == "404")
     assert 6 <= n404 <= 8
     assert not any(":" in ln.split()[0] for ln in generate(7, 6)[0])
+
+
+def test_round5_scenarios():
+    lines, labels = generate(7, 6, profile="hard")
+    assert lines == generate(7, 6, profile="hard")[0]
+    by = defaultdict(list)
+    for r in labels:
+        by[r["scenario"]].append(r)
+    mine = lambda ip: [ln for ln in lines if ln.startswith(ip + " ")]
+    one = lambda s: by[s][0]["client_ip"]
+    for s in ("stuffing_custom_path", "stuffing_json_200", "idor_walk"):
+        assert by[s][0]["label"] == "malicious" and len(by[s]) == 1
+    for s in ("docs_searcher", "order_history_user", "contact_form_user"):
+        assert by[s][0]["label"] == "benign"
+    c = mine(one("stuffing_custom_path"))
+    assert sum('POST /members/sign-in' in x and " 401 " in x for x in c) == 60
+    assert any("GET /members/home" in x for x in c)
+    j = mine(one("stuffing_json_200"))
+    assert sum("POST /oauth2/token" in x and '" 200 37 ' in x for x in j) == 80
+    assert any('" 200 412 ' in x for x in j) and any("GET /v1/me" in x for x in j)
+    assert len({COMBINED.match(x).group(8) for x in j}) >= 6
+    v6 = [r["client_ip"] for r in by["slow_probe_v6"]]
+    assert len(v6) == 30
+    assert all(ipaddress.ip_address(i) in ipaddress.ip_network("2001:db8:5eed:9::/64") for i in v6)
+    reqs = [ln for ln in lines if ln.split()[0] in set(v6)]
+    assert 90 <= len(reqs) <= 120
+    assert len({COMBINED.match(x).group(4) for x in reqs}) == len(reqs)
+    idor = mine(one("idor_walk"))
+    assert [COMBINED.match(x).group(4) for x in idor] == [f"/v1/invoices/{n}" for n in range(5000, 5081)]
+    docs = [x for x in mine(one("docs_searcher"))]
+    assert len(docs) == 6 and all(" 200 " in x for x in docs)
+    assert len(mine(one("order_history_user"))) == 10
+    assert len(mine(one("contact_form_user"))) == 15
+    assert sum("/docs/search" in x for x in lines) > len(docs)

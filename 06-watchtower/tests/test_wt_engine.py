@@ -326,6 +326,16 @@ def test_empty_config_file_is_defaults(tmp_path):
     ("detectors:\n  brute_force:\n    ipv4_prefix: 33", "from 8 to 32 or null"),
     ("detectors:\n  enumeration:\n    min_distinct: 1", "at least 2"),
     ("detectors:\n  signatures:\n    ipv6_prefix: 64", "unknown key 'ipv6_prefix'"),
+    ("detectors:\n  low_and_slow:\n    min_miss_ratio: 1.5", "at most 1"),
+    ("detectors:\n  low_and_slow:\n    min_miss_ratio: 0", "above 0"),
+    ("detectors:\n  id_enumeration:\n    max_step: 0", "positive integer"),
+    ("detectors:\n  id_enumeration:\n    min_sequential: 2", "at most 1"),
+    ("detectors:\n  id_enumeration:\n    min_id: 5", "did you mean 'min_ids'"),
+    ("detectors:\n  brute_force:\n    login_keywords: login", "list of non-empty strings"),
+    ("detectors:\n  brute_force:\n    login_keywords: [login, '']", "list of non-empty strings"),
+    ("detectors:\n  brute_force:\n    path_agnostic_factor: -1", "positive integer"),
+    ("detectors:\n  brute_force:\n    path_agnostic_factor: 2.5", "positive integer"),
+    ("rules:\n  BEH-ID-ENUMS: false", "did you mean 'BEH-ID-ENUM'"),
     ("scoring:\n  severity_cutoffs: {high: 90}", "medium <= high <= critical"),
     ("allowlistt: []", "did you mean 'allowlist'"),
     ("- just a list", "top level must be a mapping"),
@@ -375,14 +385,15 @@ def test_default_detectors_builds_from_config_and_filters_rules(monkeypatch):
     monkeypatch.setitem(sys.modules, "watchtower.detectors.signatures", sig)
     monkeypatch.setitem(sys.modules, "watchtower.detectors.behaviour", beh)
 
-    cfg = config_from_dict({"detectors": {"rate": {"enabled": False}, "enumeration": {"threshold": 7}},
+    cfg = config_from_dict({"detectors": {"rate": {"enabled": False}, "enumeration": {"threshold": 7},
+                                          "low_and_slow": {"enabled": False},
+                                          "id_enumeration": {"enabled": False}},
                             "rules": {"SIG-XSS": False, "BEH-BRUTE-FORCE": False, "BEH-BRUTE-SUCCESS": False}})
     detectors = dets.default_detectors(cfg)
-    assert set(built) == {"signatures", "enumeration", "brute_force"}
+    assert set(built) == {"signatures", "enumeration"}       # brute force: every rule off, never built
     assert built["enumeration"] == {"threshold": 7, "window_seconds": 60,
                                     "slow_threshold": 100, "slow_window_seconds": 900,
                                     "ipv6_prefix": 64, "ipv4_prefix": None, "min_distinct": 4}
-    assert built["brute_force"]["login_paths"][0] == "/login"
     assert len(detectors) == 2                      # rate disabled, brute force has no rules left
     ev = LogEvent(T0, "192.0.2.1", "GET", "/", "", 200, 0, "", "")
     emitted = [a.rule_id for d in detectors for a in d.feed(ev)]
@@ -529,3 +540,94 @@ def test_allowlist_and_real_network_channel(tmp_path):
     allow_all = config_from_dict({"allowlist": ["2001:db8:abcd:12::/64"]})
     quiet = run([p], allow_all)
     assert quiet.incidents == [] and quiet.stats["events_allowlisted"] == 32
+
+
+
+# --- long-horizon detectors and new brute-force options ---
+
+def test_long_horizon_defaults_and_optional_brute_force_options(tmp_path):
+    cfg = load_config(None)
+    assert cfg.detector_options("low_and_slow") == {
+        "window_seconds": 21600, "min_misses": 40, "min_miss_ratio": 0.3, "min_distinct_paths": 20,
+        "ipv6_prefix": 64, "ipv4_prefix": None, "min_distinct": 4}
+    assert cfg.detector_options("id_enumeration") == {
+        "window_seconds": 21600, "min_ids": 25, "max_step": 3, "min_sequential": 0.7,
+        "ipv6_prefix": 64, "ipv4_prefix": None, "min_distinct": 4}
+    assert cfg.rule_enabled("BEH-LOW-AND-SLOW") and cfg.rule_enabled("BEH-ID-ENUM")
+    # optional options are absent unless set, so the detector's own default applies
+    assert "login_keywords" not in cfg.detector_options("brute_force")
+    p = tmp_path / "c.yaml"
+    p.write_text("detectors:\n  brute_force:\n    login_keywords: [Login, ' signin ']\n"
+                 "    path_agnostic_factor: 3\n  low_and_slow:\n    min_miss_ratio: 0.5\n")
+    tuned = load_config(p)
+    assert tuned.detector_options("brute_force")["login_keywords"] == ("login", "signin")
+    assert tuned.detector_options("brute_force")["path_agnostic_factor"] == 3
+    off = config_from_dict({"detectors": {"brute_force": {"login_keywords": []}}})
+    assert off.detector_options("brute_force")["login_keywords"] == ()
+    assert tuned.detector_options("low_and_slow")["min_miss_ratio"] == 0.5
+
+
+def test_registry_builds_long_horizon_detectors(monkeypatch):
+    import types
+    import watchtower.detectors as dets
+    built = {}
+
+    def make(name, rule):
+        class Fake:
+            rule_ids = (rule,)
+
+            def __init__(self, window_seconds=1, min_misses=1, min_ids=1):   # partial signature
+                built[name] = dict(window_seconds=window_seconds)
+
+            def feed(self, event):
+                return []
+
+            def flush(self):
+                return []
+        return Fake
+
+    mod = types.ModuleType("fake_lh")
+    mod.LowAndSlowDetector = make("low_and_slow", "BEH-LOW-AND-SLOW")
+    mod.IdEnumerationDetector = make("id_enumeration", "BEH-ID-ENUM")
+    monkeypatch.setitem(sys.modules, "watchtower.detectors.longhorizon", mod)
+    cfg = config_from_dict({"rules": {"BEH-ID-ENUM": False}})
+    names = [type(d.inner).__name__ for d in dets.default_detectors(cfg)]
+    assert built == {"low_and_slow": {"window_seconds": 21600}}       # id_enumeration: rule off
+    assert names.count("Fake") == 1
+
+
+def test_missing_longhorizon_module_warns_and_scan_continues(monkeypatch):
+    import watchtower.detectors as dets
+    monkeypatch.setitem(sys.modules, "watchtower.detectors.longhorizon", None)
+    with pytest.warns(RuntimeWarning, match="longhorizon"):
+        detectors = dets.default_detectors(Config())
+    assert detectors                                   # the other detectors still built
+
+
+def test_optional_option_unsupported_by_detector_warns():
+    from watchtower.detectors import _accepted_options
+
+    class OldBrute:
+        def __init__(self, threshold=10, window_seconds=300, login_paths=()):
+            pass
+
+    cfg = config_from_dict({"detectors": {"brute_force": {"path_agnostic_factor": 2}}})
+    with pytest.warns(RuntimeWarning, match="path_agnostic_factor"):
+        opts = _accepted_options("brute_force", OldBrute, cfg)
+    assert "path_agnostic_factor" not in opts
+
+
+def test_new_options_reach_the_real_detectors():
+    pytest.importorskip("watchtower.detectors.longhorizon")
+    import inspect
+    from watchtower.detectors import default_detectors
+    from watchtower.detectors.behaviour import BruteForceDetector
+    if "path_agnostic_factor" not in inspect.signature(BruteForceDetector.__init__).parameters:
+        pytest.skip("behaviour.py without path_agnostic_factor")
+    cfg = config_from_dict({"detectors": {"brute_force": {"path_agnostic_factor": 5},
+                                          "id_enumeration": {"min_ids": 30}}})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")                      # nothing dropped or unknown
+        dets = {type(d.inner).__name__: d.inner for d in default_detectors(cfg)}
+    assert {"LowAndSlowDetector", "IdEnumerationDetector", "BruteForceDetector"} <= set(dets)
+    assert dets["IdEnumerationDetector"].min_ids == 30

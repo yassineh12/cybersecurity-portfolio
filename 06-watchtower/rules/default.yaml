@@ -95,6 +95,18 @@ detectors:
       - /api/login
       - /user/login
       - /xmlrpc.php           # WordPress XML-RPC, a favourite brute-force target
+    # Optional, left to the detector's own defaults unless set here:
+    # login_keywords: words that mark other paths as login endpoints (e.g.
+    #   /portal/sign-in). More words catch custom login pages; generic ones
+    #   ("account", "user") turn ordinary form posts into "login attempts".
+    #   [] switches keyword matching off. Detector default:
+    #   login_keywords: [login, logon, signin, sign-in, sign_in, auth,
+    #                    authenticate, token, session, sessions, oauth]
+    # path_agnostic_factor: failed POSTs (401/403) to paths that are not
+    #   recognised logins still count once a client reaches this many times
+    #   the threshold. Lower catches brute force against unknown login URLs
+    #   (e.g. an API with its own auth); higher keeps busy API clients quiet.
+    #   path_agnostic_factor: 2
     # Network channel, as for enumeration above.
     ipv6_prefix: 64
     ipv4_prefix: null
@@ -110,6 +122,53 @@ detectors:
     # Higher: only flags real floods; a moderate scraper passes unnoticed.
     threshold: 300
     window_seconds: 60
+    # Network channel, as for enumeration above.
+    ipv6_prefix: 64
+    ipv4_prefix: null
+    min_distinct: 4
+
+  # Low and slow: a scanner that paces itself to a few requests a minute stays
+  # under every short window above, but over hours its misses pile up.
+  low_and_slow:
+    enabled: true
+    # Look-back in seconds (6 hours). Longer catches slower scans but holds
+    # more state per client and flags long-lived users with stale bookmarks.
+    window_seconds: 21600
+    # Misses (404/403/410) needed within the window. Lower catches smaller,
+    # more patient probes; higher ignores clients with a few broken links.
+    min_misses: 40
+    # Share of the client's requests that missed (0-1). A real user browsing
+    # all day mostly hits pages that exist; a prober mostly misses. Lower
+    # flags heavy users who also miss a lot; higher lets a prober hide by
+    # mixing in real page loads.
+    min_miss_ratio: 0.3
+    # Distinct missed paths. Guessing means many different paths; one broken
+    # image requested 50 times is not reconnaissance.
+    min_distinct_paths: 20
+    # Network channel, as for enumeration above.
+    ipv6_prefix: 64
+    ipv4_prefix: null
+    min_distinct: 4
+
+  # ID enumeration (IDOR scraping): walking /api/users/1001, /1002, /1003 ...
+  # to harvest records one ID at a time, usually answered 200, so no miss-based
+  # detector sees it.
+  id_enumeration:
+    enabled: true
+    # Look-back in seconds (6 hours).
+    window_seconds: 21600
+    # Distinct IDs on one path template before alerting. Lower catches small
+    # scrapes; an admin paging through a list or a mobile app syncing records
+    # can legitimately touch dozens.
+    min_ids: 25
+    # Largest gap between consecutive IDs that still counts as "sequential".
+    # Larger catches attackers who skip a few; too large and random lookups
+    # of popular records start to look like a walk.
+    max_step: 3
+    # Share (0-1) of the IDs that must form that walk. Lower catches walks
+    # padded with random lookups; higher ignores clients that merely open
+    # many records in no particular order.
+    min_sequential: 0.7
     # Network channel, as for enumeration above.
     ipv6_prefix: 64
     ipv4_prefix: null
@@ -131,6 +190,8 @@ rules:
   BEH-BRUTE-FORCE: true       # repeated failed logins
   BEH-BRUTE-SUCCESS: true     # a login success after a brute-force run
   BEH-RATE-SPIKE: true        # request floods
+  BEH-LOW-AND-SLOW: true      # slow reconnaissance spread over hours
+  BEH-ID-ENUM: true           # sequential ID walking (IDOR scraping)
 
 # ---------------------------------------------------------------------------
 # scoring: how alerts for one client become a 0-100 incident score.
