@@ -3,3 +3,6 @@ __pycache__/
 data/
 report.md
 report.json
+!**/examples/report.md
+!**/examples/report.json
+!**/examples/report.html

@@ -1,12 +1,15 @@
 # Cybersecurity portfolio
 
-Three projects that build on each other. Together they cover the defensive, analytical and offensive sides of web security.
+![tests](https://github.com/yassineh12/cybersecurity-portfolio/actions/workflows/tests.yml/badge.svg)
+
+Projects that build on each other. Together they cover the defensive, analytical and offensive sides of web security.
 
 | # | Project | Status | Skills shown |
 |---|---|---|---|
 | 1 | [Security headers & TLS auditor](01-headers-auditor/) | Complete | HTTP, TLS, OWASP secure-configuration, polite crawling |
 | 2 | [Phishing site detector](02-phishing-detector/) | Lesson 1 of 4 | Threat intel data, feature engineering, ML classification |
 | 3 | [Passive vulnerability scanner](03-vuln-scanner/) | Planned | Recon, fingerprinting, CVE matching, safe XSS checks |
+| 6 | [WATCHTOWER: web-log threat detection](06-watchtower/) | Complete | Detection engineering, MITRE ATT&CK, correlation, measuring precision and recall |
 
 What comes next: see [ROADMAP.md](ROADMAP.md).
 

