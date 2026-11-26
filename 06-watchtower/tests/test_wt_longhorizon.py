@@ -173,3 +173,33 @@ def test_id_enum_memory_cleanup_and_malformed():
     assert det.feed(bad) == [] and det.feed(None) == []  # type: ignore[arg-type]
     det.flush()
     assert det._states == {}
+
+
+def _interleaved(statuses, others_per_walk=3):
+    evs, t = [], 0
+    for i in range(60):
+        evs.append(ev(t, ip="198.51.100.10", path=f"/products/{i + 1}", status=statuses(i)))
+        t += 20
+        for j in range(others_per_walk):
+            evs.append(ev(t, ip="198.51.100.10", path=f"/page/{i}-{j}"))
+            t += 20
+    return evs
+
+
+def test_crawler_all_200_among_other_pages_quiet():
+    assert run(IdEnumerationDetector(), _interleaved(lambda i: 200)) == []
+
+
+def test_all_200_focused_walk_alerts_on_focus():
+    evs = [ev(i * 60, path=f"/products/{i + 1}") for i in range(60)]
+    alerts = run(IdEnumerationDetector(), evs)
+    assert len(alerts) == 1 and "focus signal" in alerts[0].detail
+
+
+def test_mixed_403_walk_with_browsing_alerts_on_refusals():
+    alerts = run(IdEnumerationDetector(), _interleaved(lambda i: 403 if i % 4 == 0 else 200))
+    assert len(alerts) == 1 and "refusal signal" in alerts[0].detail
+
+
+def test_redirects_do_not_count_as_refusals():
+    assert run(IdEnumerationDetector(), _interleaved(lambda i: 301 if i % 2 else 200)) == []

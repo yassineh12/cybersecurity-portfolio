@@ -270,11 +270,34 @@ def templatise(path: str) -> tuple[str, int] | None:
     return "/".join(parts).lower(), value
 
 
+class _Totals:
+    """All requests by one key in 5-minute buckets (the focus denominator)."""
+    __slots__ = ("buckets", "total", "last_idx")
+
+    def __init__(self) -> None:
+        self.buckets: deque[list[int]] = deque()   # [bucket idx, count]
+        self.total = 0
+        self.last_idx = 0
+
+    def advance(self, idx: int, nbuckets: int) -> None:
+        while self.buckets and self.buckets[0][0] <= idx - nbuckets:
+            self.total -= self.buckets.popleft()[1]
+
+    def add(self, idx: int, nbuckets: int) -> None:
+        idx = max(idx, self.last_idx)
+        self.last_idx = idx
+        self.advance(idx, nbuckets)
+        if not self.buckets or self.buckets[-1][0] != idx:
+            self.buckets.append([idx, 0])
+        self.buckets[-1][1] += 1
+        self.total += 1
+
+
 class _IdState:
     """Distinct IDs requested for one template by one key, within the window."""
 
     def __init__(self) -> None:
-        self.ids: dict[int, tuple[datetime, bool, str]] = {}  # id -> (ts, non2xx, addr)
+        self.ids: dict[int, tuple[datetime, bool, str, bool]] = {}  # id -> (ts, non2xx, addr, refused)
         self.order: deque[tuple[datetime, int]] = deque()
         self.evidence: deque[str] = deque(maxlen=MAX_EVIDENCE)
 
@@ -293,7 +316,9 @@ class _IdState:
         old = self.ids.get(ident)
         if old is None and len(self.ids) >= ID_CAP:
             return False
-        self.ids[ident] = (ev.timestamp, non2xx or (old[1] if old else False), ev.client_ip)
+        refused = ev.status in MISS_STATUSES
+        self.ids[ident] = (ev.timestamp, non2xx or (old[1] if old else False), ev.client_ip,
+                           refused or (old[3] if old else False))
         self.order.append((ev.timestamp, ident))
         self.evidence.append(_line(ev))
         return old is None
@@ -308,7 +333,13 @@ class IdEnumerationDetector:
     path is templatised ("/invoice/{id}") and we alert when one template saw
     at least `min_ids` distinct IDs inside `window_seconds` and at least 70%
     of consecutive sorted IDs differ by <= `max_step` (a walk, not a random
-    sample). Detail gives the template, ID range, count and how many IDs
+    sample). To tell an attack from a crawl, the walk must also show one of:
+    a refusal signal (>= `min_refused_share` of its IDs answered 401/403/404/
+    410: probing objects the attacker may not own) or a focus signal (the
+    template is >= `min_focus_share` of everything the key requested in the
+    window: it does nothing but walk). A search crawler fetching public
+    catalogue pages, all 200, among many other page types shows neither.
+    Detail names the signal that fired and gives the template, ID range, count and how many IDs
     were answered non-2xx.
 
     False-positive risk: a user paging through their own orders or a crawler
@@ -320,7 +351,12 @@ class IdEnumerationDetector:
 
     def __init__(self, min_ids: int = 25, window_seconds: int = 21600, max_step: int = 3,
                  min_sequential: float = 0.7, ipv6_prefix: int | None = 64,
-                 ipv4_prefix: int | None = None, min_distinct: int = 4):
+                 ipv4_prefix: int | None = None, min_distinct: int = 4,
+                 min_refused_share: float = 0.15, min_focus_share: float = 0.6):
+        self.min_refused_share = float(min_refused_share)
+        self.min_focus_share = float(min_focus_share)
+        self.nbuckets = max(1, math.ceil(max(1, int(window_seconds)) / BUCKET_SECONDS))
+        self._totals: dict[tuple[str, bool], _Totals] = {}
         self.min_ids = max(2, int(min_ids))
         self.window_seconds = max(1, int(window_seconds))
         self.max_step = max(1, int(max_step))
@@ -348,17 +384,28 @@ class IdEnumerationDetector:
                     del tmpl[t]
             if not tmpl:
                 del self._states[sk]
+        idx = int(now.timestamp() // BUCKET_SECONDS)
+        for k in list(self._totals):
+            tt = self._totals[k]
+            tt.advance(max(idx, tt.last_idx), self.nbuckets)
+            if not tt.buckets:
+                del self._totals[k]
 
     def _feed(self, ev: LogEvent) -> None:
         self._seen += 1
         if self._seen % _SWEEP_EVERY == 0:
             self._sweep(ev.timestamp)
+        idx = int(ev.timestamp.timestamp() // BUCKET_SECONDS)
         tv = templatise(ev.path)
-        if tv is None:
-            return
-        template, ident = tv
         for key, is_net in _keys(ev.client_ip, self.v4, self.v6):
             sk = (key, is_net)
+            tot = self._totals.get(sk)
+            if tot is None:
+                tot = self._totals[sk] = _Totals()
+            tot.add(idx, self.nbuckets)
+            if tv is None:
+                continue
+            template, ident = tv
             per = self._states.setdefault(sk, {})
             st = per.get(template)
             if st is None:
@@ -378,21 +425,33 @@ class IdEnumerationDetector:
             n = len(st.ids)
             if not new or n < self.min_ids or not (n <= 2 * self.min_ids or n % 8 == 0):
                 continue
-            if self._walk(st, is_net, key, template):
-                self._open(ak, st, template, ev)
+            signal = self._walk(st, is_net, key, template, tot)
+            if signal:
+                self._open(ak, st, template, ev, signal)
 
-    def _walk(self, st: _IdState, is_net: bool, key: str, template: str) -> bool:
+    def _walk(self, st: _IdState, is_net: bool, key: str, template: str,
+              tot: _Totals) -> str:
+        """Why this is an attack walk, or "" when it is not (or only a crawl)."""
         if is_net:
             if (key, template) in self._client_nets:
-                return False
+                return ""
             if len({r[2] for r in st.ids.values()}) < self.min_distinct:
-                return False
+                return ""
         ids = sorted(st.ids)
         steps = [b - a for a, b in zip(ids, ids[1:])]
         close = sum(1 for s in steps if s <= self.max_step)
-        return bool(steps) and close / len(steps) >= self.min_sequential
+        if not steps or close / len(steps) < self.min_sequential:
+            return ""
+        refused = sum(1 for r in st.ids.values() if r[3]) / len(ids)
+        if refused >= self.min_refused_share:
+            return f"refusal signal: {refused:.0%} of IDs answered 401/403/404/410"
+        focus = len(st.order) / tot.total if tot.total else 0.0
+        if focus >= self.min_focus_share:
+            return f"focus signal: template is {focus:.0%} of the key's requests"
+        return ""
 
-    def _open(self, ak: tuple[str, bool, str], st: _IdState, template: str, ev: LogEvent) -> None:
+    def _open(self, ak: tuple[str, bool, str], st: _IdState, template: str, ev: LogEvent,
+              signal: str = "") -> None:
         key, is_net, _ = ak
         if not is_net:
             net = _net_key(ev.client_ip, self.v4, self.v6)
@@ -409,9 +468,10 @@ class IdEnumerationDetector:
             event_count=len(st.order), technique="T1595.003", evidence=list(st.evidence),
             detail=(f"{scope}template {template}: {len(ids)} distinct IDs "
                     f"({ids[0]}..{ids[-1]}) within {self.window_seconds}s forming a "
-                    f"sequential walk; {bad} answered non-2xx."))
+                    f"sequential walk; {bad} answered non-2xx; {signal}."))
 
     def flush(self) -> list[Alert]:
         out = sorted(self._alerts.values(), key=lambda a: (a.first_seen, a.client_ip))
         self._alerts, self._states, self._client_nets = {}, {}, set()
+        self._totals = {}
         return out
